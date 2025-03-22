@@ -79,43 +79,43 @@ export default function Sidebar() {
   ];
 
   return (
-    <div 
-      className={`bg-neutral-800 text-white h-full flex flex-col shadow-md transition-all duration-300 
-      ${collapsed ? 'w-16' : 'w-64'}`}
-    >
-      <div className="p-4 flex items-center justify-between border-b border-neutral-700">
+    <div className={`side-pane h-full flex flex-col ${collapsed ? 'w-20' : 'w-280'}`}>
+      <div className="flex items-center justify-between mb-6">
         <div className="flex items-center">
-          <Plane className="text-accent mr-2" />
-          {!collapsed && <h1 className="text-xl font-bold">SkyTycoon</h1>}
+          <Plane className="text-[#64ffda] mr-2" size={collapsed ? 24 : 28} />
+          {!collapsed && <h2 className="text-2xl">SkyTycoon</h2>}
         </div>
         <Button 
           variant="ghost" 
           size="icon" 
-          className="text-neutral-400 hover:text-white hover:bg-neutral-700"
+          className="text-white hover:bg-[rgba(255,255,255,0.1)]"
           onClick={() => setCollapsed(!collapsed)}
         >
           {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
         </Button>
       </div>
       
-      <nav className="p-4 flex-grow overflow-y-auto">
+      <nav className="flex-grow overflow-y-auto mb-6">
         {!collapsed && (
-          <div className="mb-2 text-xs text-neutral-500 uppercase font-semibold">Management</div>
+          <div className="mb-4 text-xs text-[rgba(255,255,255,0.6)] uppercase font-semibold tracking-wider">
+            Management
+          </div>
         )}
-        <ul className="space-y-1">
+        <ul className="space-y-3">
           {navItems
             .filter(item => item.section === "Management")
             .map(item => (
               <li key={item.path}>
                 <Link href={item.path}>
-                  <a 
-                    className={`flex items-center p-2 rounded transition-colors
+                  <a className={`flex items-center p-3 rounded-xl transition-all
                       ${location === item.path 
-                        ? 'bg-primary text-white' 
-                        : 'text-neutral-300 hover:bg-neutral-700'}`}
+                        ? 'bg-[rgba(255,255,255,0.1)] text-[#64ffda]' 
+                        : 'text-white hover:bg-[rgba(255,255,255,0.05)]'}`}
                   >
-                    <span className="w-5 mr-3">{item.icon}</span>
-                    {!collapsed && <span>{item.label}</span>}
+                    <span className={`${collapsed ? '' : 'mr-3'}`}>
+                      {item.icon}
+                    </span>
+                    {!collapsed && <span className="font-medium">{item.label}</span>}
                   </a>
                 </Link>
               </li>
@@ -124,51 +124,53 @@ export default function Sidebar() {
         </ul>
         
         {!collapsed && (
-          <div className="my-2 text-xs text-neutral-500 uppercase font-semibold">Game</div>
+          <div className="my-4 text-xs text-[rgba(255,255,255,0.6)] uppercase font-semibold tracking-wider">
+            Game Options
+          </div>
         )}
-        <ul className="space-y-1">
+        <ul className="space-y-3">
           {navItems
             .filter(item => item.section === "Game")
             .map(item => (
               <li key={item.path}>
                 <Link href={item.path}>
-                  <a 
-                    className={`flex items-center p-2 rounded transition-colors
+                  <a className={`flex items-center p-3 rounded-xl transition-all
                       ${location === item.path 
-                        ? 'bg-primary text-white' 
-                        : 'text-neutral-300 hover:bg-neutral-700'}`}
+                        ? 'bg-[rgba(255,255,255,0.1)] text-[#64ffda]' 
+                        : 'text-white hover:bg-[rgba(255,255,255,0.05)]'}`}
                   >
-                    <span className="w-5 mr-3">{item.icon}</span>
-                    {!collapsed && <span>{item.label}</span>}
+                    <span className={`${collapsed ? '' : 'mr-3'}`}>
+                      {item.icon}
+                    </span>
+                    {!collapsed && <span className="font-medium">{item.label}</span>}
                   </a>
                 </Link>
               </li>
             ))
           }
           <li>
-            <Button 
-              variant="ghost" 
-              className="w-full justify-start p-2 text-neutral-300 hover:bg-neutral-700 hover:text-white font-normal"
+            <button 
+              className="w-full flex items-center p-3 rounded-xl text-white hover:bg-[rgba(255,255,255,0.05)] transition-all"
               onClick={handleSaveGame}
             >
-              <Save className="w-5 h-5 mr-3" />
-              {!collapsed && <span>Save Game</span>}
-            </Button>
+              <Save className={`w-5 h-5 ${collapsed ? '' : 'mr-3'}`} />
+              {!collapsed && <span className="font-medium">Save Game</span>}
+            </button>
           </li>
         </ul>
       </nav>
       
       {!collapsed && player && (
-        <div className="p-4 border-t border-neutral-700">
+        <div className="p-4 border-t border-[rgba(255,255,255,0.1)]">
           <div className="flex items-center">
-            <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center mr-2">
-              <span className="font-semibold">
+            <div className="w-10 h-10 rounded-full bg-[#00b4d8] flex items-center justify-center mr-3">
+              <span className="font-bold text-white">
                 {player.username.substring(0, 2).toUpperCase()}
               </span>
             </div>
             <div>
-              <div className="font-medium">{player.username}</div>
-              <div className="text-xs text-neutral-400">CEO</div>
+              <div className="font-medium text-white">{player.username}</div>
+              <div className="text-xs text-[rgba(255,255,255,0.6)]">Airline CEO</div>
             </div>
           </div>
         </div>
