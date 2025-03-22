@@ -1,0 +1,3293 @@
+document.addEventListener('DOMContentLoaded', () => {
+    // Add popup system functions at the start
+    function createPopup(title, content, buttons = [], onClose = null) {
+        const overlay = document.createElement('div');
+        overlay.className = 'popup-overlay';
+        
+        const card = document.createElement('div');
+        card.className = 'popup-card';
+        
+        const header = document.createElement('div');
+        header.className = 'popup-header';
+        
+        const titleElement = document.createElement('h2');
+        titleElement.className = 'popup-title';
+        titleElement.textContent = title;
+        
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'popup-close';
+        closeBtn.innerHTML = '×';
+        closeBtn.onclick = () => {
+            overlay.classList.remove('visible');
+            setTimeout(() => {
+                overlay.remove();
+                if (onClose) onClose();
+            }, 300);
+        };
+        
+        header.appendChild(titleElement);
+        header.appendChild(closeBtn);
+        
+        const contentElement = document.createElement('div');
+        contentElement.className = 'popup-content';
+        contentElement.innerHTML = content;
+        
+        card.appendChild(header);
+        card.appendChild(contentElement);
+        
+        if (buttons.length > 0) {
+            const buttonContainer = document.createElement('div');
+            buttonContainer.className = 'popup-buttons';
+            buttons.forEach(button => {
+                const btn = document.createElement('button');
+                btn.className = `popup-button ${button.primary ? 'primary' : 'secondary'}`;
+                btn.textContent = button.text;
+                btn.onclick = () => {
+                    if (button.onClick) {
+                        const result = button.onClick();
+                        if (result !== false) {
+                            closeBtn.click();
+                        }
+                    } else {
+                        closeBtn.click();
+                    }
+                };
+                buttonContainer.appendChild(btn);
+            });
+            card.appendChild(buttonContainer);
+        }
+        
+        overlay.appendChild(card);
+        document.body.appendChild(overlay);
+        
+        // Trigger animation
+        setTimeout(() => overlay.classList.add('visible'), 10);
+        
+        return new Promise(resolve => {
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    closeBtn.click();
+                    resolve(null);
+                }
+            });
+        });
+    }
+
+    function showInput(title, message, placeholder = '') {
+        return new Promise(resolve => {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'popup-input';
+            input.placeholder = placeholder;
+            
+            const content = document.createElement('div');
+            content.innerHTML = message;
+            content.appendChild(input);
+            
+            createPopup(title, content.innerHTML, [
+                {
+                    text: 'Cancel',
+                    primary: false,
+                    onClick: () => resolve(null)
+                },
+                {
+                    text: 'Confirm',
+                    primary: true,
+                    onClick: () => {
+                        const value = input.value.trim();
+                        if (value) {
+                            resolve(value);
+                        } else {
+                            showAlert('Error', 'Please enter a name for your aircraft.');
+                        }
+                    }
+                }
+            ], () => {
+                input.focus();
+                input.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        const value = input.value.trim();
+                        if (value) {
+                            resolve(value);
+                        } else {
+                            showAlert('Error', 'Please enter a name for your aircraft.');
+                        }
+                    }
+                });
+            });
+        });
+    }
+
+    function showConfirm(title, message) {
+        return new Promise(resolve => {
+            createPopup(title, message, [
+                {
+                    text: 'Cancel',
+                    primary: false,
+                    onClick: () => resolve(false)
+                },
+                {
+                    text: 'Confirm',
+                    primary: true,
+                    onClick: () => resolve(true)
+                }
+            ]);
+        });
+    }
+
+    function showAlert(title, message) {
+        return createPopup(title, message, [
+            {
+                text: 'OK',
+                primary: true
+            }
+        ]);
+    }
+
+    // Retrieve game state from localStorage
+    const gameState = JSON.parse(localStorage.getItem('gameState')) || {};
+    
+    // Initial game variables
+    let money = 5000000000; // $5 billion starting money
+    let gameTime = 0; // Game time in minutes (starts at 00:00 Jan 1, 2026)
+    let timeMultiplier = 1; // Default time speed (1x)
+    const fleet = []; // Array to store owned aircraft
+    const playerHubs = [gameState.hub || 'No Hub Selected']; // Array to store player's hubs
+    const playerRoutes = []; // Array to store player's routes
+    const scheduledFlights = []; // Array to store scheduled flights { routeIndex, aircraft, startMinute, totalTime, date, completed, passengers, isReturn }
+    const activeLoans = []; // Array to store active loans
+    let activeFlightsInterval = null; // Interval for auto-refreshing Active Flights
+    let currentContent = null; // Track current content section
+
+    // Define available aircraft options for purchase
+    const availableAircraft = [
+        { 
+            name: 'Airbus A320neo', 
+            purchasePrice: 120000000,
+            maxCapacity: 180,
+            configurations: [
+                {
+                    name: 'All Economy',
+                    seats: {
+                        firstClass: 0,
+                        businessClass: 0,
+                        premiumEconomy: 0,
+                        economy: 180
+                    }
+                },
+                {
+                    name: 'Mixed Cabin',
+                    seats: {
+                        firstClass: 0,
+                        businessClass: 12,
+                        premiumEconomy: 0,
+                        economy: 144
+                    }
+                },
+                {
+                    name: 'Luxury',
+                    seats: {
+                        firstClass: 60,
+                        businessClass: 0,
+                        premiumEconomy: 0,
+                        economy: 0
+                    }
+                }
+            ]
+        }
+    ];
+
+    // Define registration prefixes based on hubs
+    const hubRegistrationPrefixes = {
+        'SYD': 'VH-',
+        'JFK': 'N-',
+        'LHR': 'G-',
+        'CDG': 'F-',
+        'DXB': 'A6-',
+        'HND': 'JA-',
+        'SIN': '9V-',
+        'FRA': 'D-',
+        'AMS': 'PH-',
+        'ICN': 'HL-',
+        'ATL': 'N-',
+        'MIA': 'N-',
+        'SFO': 'N-',
+        'PEK': 'B-',
+        'PVG': 'B-',
+        'GRU': 'PP-',
+        'MAN': 'G-',
+        'ORY': 'F-'
+    };
+
+    // Define registration countries and their prefixes
+    const registrationCountries = [
+        { name: 'Australia', prefix: 'VH-' },
+        { name: 'Bangladesh', prefix: 'S2-' }
+    ];
+
+    // Define available hubs
+    const availableHubs = [
+        'JFK', 'LAX', 'ORD', 'LHR', 'MAN', 'CDG', 'ORY', 'DXB', 'HND', 'SIN',
+        'SYD', 'FRA', 'AMS', 'ICN', 'ATL', 'MIA', 'SFO', 'PEK', 'PVG', 'GRU'
+    ];
+
+    // Define hub coordinates for distance calculation
+    const hubCoordinates = {
+        'JFK': { lat: 40.6413, lon: -73.7781 },
+        'LAX': { lat: 33.9416, lon: -118.4085 },
+        'ORD': { lat: 41.9742, lon: -87.9073 },
+        'LHR': { lat: 51.4700, lon: -0.4543 },
+        'MAN': { lat: 53.3537, lon: -2.2750 },
+        'CDG': { lat: 49.0097, lon: 2.5479 },
+        'ORY': { lat: 48.7233, lon: 2.3594 },
+        'DXB': { lat: 25.2528, lon: 55.3644 },
+        'HND': { lat: 35.5489, lon: 139.7798 },
+        'SIN': { lat: 1.3644, lon: 103.9915 },
+        'SYD': { lat: -33.9461, lon: 151.1772 },
+        'FRA': { lat: 50.0379, lon: 8.5622 },
+        'AMS': { lat: 52.3105, lon: 4.7683 },
+        'ICN': { lat: 37.4602, lon: 126.4407 },
+        'ATL': { lat: 33.6407, lon: -84.4277 },
+        'MIA': { lat: 25.7959, lon: -80.2870 },
+        'SFO': { lat: 37.6213, lon: -122.3790 },
+        'PEK': { lat: 40.0799, lon: 116.6031 },
+        'PVG': { lat: 31.1443, lon: 121.8083 },
+        'GRU': { lat: -23.4356, lon: -46.4731 }
+    };
+
+    // UI elements
+    const airlineNameDisplay = document.getElementById('airlineNameDisplay');
+    const ceoNameDisplay = document.getElementById('ceoNameDisplay');
+    const hubDisplay = document.getElementById('hubDisplay');
+    const fleetBtn = document.getElementById('fleetBtn');
+    const hubsBtn = document.getElementById('hubsBtn');
+    const routesBtn = document.getElementById('routesBtn');
+    const financeBtn = document.getElementById('financeBtn');
+    const hqBtn = document.getElementById('hqBtn');
+    const contentArea = document.getElementById('contentArea');
+    const timeTracker = document.getElementById('timeTracker');
+    const moneyTracker = document.getElementById('moneyTracker');
+    const activeFlightsTracker = document.getElementById('activeFlightsTracker');
+    const worldMap = document.getElementById('worldMap');
+    const timeToggle = document.getElementById('timeToggle');
+
+    // Populate UI with game state
+    airlineNameDisplay.textContent = gameState.airlineName || 'Your Airline';
+    ceoNameDisplay.textContent = `CEO: ${gameState.ceoName || 'Unknown CEO'}`;
+    hubDisplay.textContent = `Hub: ${gameState.hub || 'No Hub Selected'}`;
+
+    // Display hub on world map (basic placeholder)
+    const hubLocations = {
+        'JFK': { x: '40%', y: '30%' },
+        'LAX': { x: '20%', y: '40%' },
+        'ORD': { x: '35%', y: '35%' },
+        'LHR': { x: '60%', y: '20%' },
+        'MAN': { x: '58%', y: '22%' },
+        'CDG': { x: '65%', y: '25%' },
+        'ORY': { x: '63%', y: '27%' }
+    };
+    if (gameState.hub && hubLocations[gameState.hub]) {
+        const hubPoint = document.createElement('div');
+        hubPoint.style.position = 'absolute';
+        hubPoint.style.width = '15px';
+        hubPoint.style.height = '15px';
+        hubPoint.style.background = '#ffcc00';
+        hubPoint.style.borderRadius = '50%';
+        hubPoint.style.left = hubLocations[gameState.hub].x;
+        hubPoint.style.top = hubLocations[gameState.hub].y;
+        hubPoint.title = `${gameState.hub} - Hub`;
+        worldMap.appendChild(hubPoint);
+    }
+
+    // Calendar helper functions
+    function isLeapYear(year) {
+        return (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+    }
+
+    function getDaysInMonth(month, year) {
+        const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        if (month === 2 && isLeapYear(year)) {
+            return 29;
+        }
+        return daysInMonth[month - 1];
+    }
+
+    function formatGameTime(minutes) {
+        let totalMinutes = minutes;
+        let year = 2026;
+        let month = 1;
+        let day = 1;
+        let hour = 0;
+        let minute = 0;
+
+        // Calculate year
+        while (totalMinutes >= 365 * 24 * 60) {
+            const daysInYear = isLeapYear(year) ? 366 : 365;
+            totalMinutes -= daysInYear * 24 * 60;
+            year++;
+        }
+
+        // Calculate month
+        while (totalMinutes >= getDaysInMonth(month, year) * 24 * 60) {
+            totalMinutes -= getDaysInMonth(month, year) * 24 * 60;
+            month++;
+        }
+
+        // Calculate day
+        while (totalMinutes >= 24 * 60) {
+            totalMinutes -= 24 * 60;
+            day++;
+        }
+
+        // Calculate hour and minute
+        hour = Math.floor(totalMinutes / 60);
+        minute = totalMinutes % 60;
+
+        return {
+            date: `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`,
+            time: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+        };
+    }
+
+    function formatMoney(amount) {
+        return '$' + Number(amount).toLocaleString('en-US', {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0
+        });
+    }
+
+    // Parse a money string ($X,XXX) into a number
+    function parseMoney(value) {
+        if (typeof value === 'number') return value;
+        return parseFloat(value.replace(/[$,]/g, ''));
+    }
+
+    // Add these variables at the top of your script
+    let dailyGains = 0;
+    let dailyLosses = 0;
+    let lastGameDate = '';
+
+    function updateMoneyDisplay(newAmount, previousAmount) {
+        const moneyTracker = document.getElementById('moneyTracker');
+        const moneyText = moneyTracker.querySelector('.taskbar-text');
+        const difference = newAmount - previousAmount;
+        
+        // Update the display with formatted amount
+        moneyText.textContent = `Money: ${formatMoney(newAmount)}`;
+        
+        // Update daily trends
+        if (difference !== 0) {
+            if (difference > 0) {
+                dailyGains += difference;
+            } else {
+                dailyLosses += Math.abs(difference);
+            }
+            
+            // Update trend displays
+            const gainTrend = moneyTracker.querySelector('.trend-item.gain .trend-value');
+            const lossTrend = moneyTracker.querySelector('.trend-item.loss .trend-value');
+            gainTrend.textContent = `+${formatMoney(dailyGains)}`;
+            lossTrend.textContent = `-${formatMoney(dailyLosses)}`;
+            
+            // Create and show the change indicator
+            const indicator = document.createElement('span');
+            indicator.className = `money-change-indicator ${difference > 0 ? 'positive' : 'negative'}`;
+            indicator.textContent = `${difference > 0 ? '+' : ''}${formatMoney(difference)}`;
+            moneyTracker.appendChild(indicator);
+            
+            // Remove the indicator after animation
+            setTimeout(() => {
+                indicator.remove();
+            }, 1000);
+            
+            // Add the appropriate class for color change and scaling
+            moneyTracker.classList.remove('increase', 'decrease');
+            moneyTracker.classList.add(difference > 0 ? 'increase' : 'decrease');
+            
+            // Remove the class after animation
+            setTimeout(() => {
+                moneyTracker.classList.remove('increase', 'decrease');
+            }, 300);
+        }
+    }
+
+    // Game time and trackers
+    function updateTrackers() {
+        gameTime += timeMultiplier;
+        const gameDateTime = formatGameTime(gameTime);
+        timeTracker.textContent = `Time: ${gameDateTime.time} ${gameDateTime.date}`;
+        
+        // Check if it's a new day
+        if (gameDateTime.date !== lastGameDate) {
+            // Reset daily trends at the start of a new day
+            dailyGains = 0;
+            dailyLosses = 0;
+            lastGameDate = gameDateTime.date;
+            
+            // Reset trend displays
+            const moneyTracker = document.getElementById('moneyTracker');
+            const gainTrend = moneyTracker.querySelector('.trend-item.gain .trend-value');
+            const lossTrend = moneyTracker.querySelector('.trend-item.loss .trend-value');
+            gainTrend.textContent = '+$0';
+            lossTrend.textContent = '-$0';
+        }
+        
+        // Example usage in your existing code:
+        const previousMoney = parseFloat(moneyTracker.querySelector('.taskbar-text').textContent.replace(/[^0-9.-]+/g, ''));
+        const newMoney = money;
+        updateMoneyDisplay(newMoney, previousMoney);
+
+        const currentDateTime = formatGameTime(gameTime);
+        const activeFlights = scheduledFlights.filter(f => {
+            const flightStart = f.startMinute;
+            const flightEnd = f.startMinute + f.totalTime * 60;
+            return f.date === currentDateTime.date && 
+                   currentDateTime.time >= formatGameTime(flightStart).time && 
+                   currentDateTime.time < formatGameTime(flightEnd).time && 
+                   !f.completed;
+        });
+        activeFlightsTracker.textContent = `Active Flights: ${activeFlights.length}`;
+
+        // Check for weekly loan payments
+        const weekInMinutes = 7 * 24 * 60;
+        if (gameTime % weekInMinutes === 0) {
+            activeLoans.forEach(loan => {
+                if (!loan.completed) {
+                    const weeklyPayment = loan.weeklyPayment;
+                    if (money >= weeklyPayment) {
+                        money -= weeklyPayment;
+                        loan.remainingPayments--;
+                        loan.remainingAmount -= (weeklyPayment - (weeklyPayment * loan.interestRate / 52));
+                        
+                        if (loan.remainingPayments <= 0) {
+                            loan.completed = true;
+                            showAlert('Loan Completed', `Your loan from ${loan.bank} has been fully repaid!`);
+                        }
+                    } else {
+                        showAlert('Loan Payment Failed', 
+                            `Unable to make the weekly payment of $${weeklyPayment.toLocaleString()} for your ${loan.bank} loan. 
+                            Please ensure you have sufficient funds.`);
+                    }
+                }
+            });
+        }
+    }
+    updateTrackers();
+    setInterval(updateTrackers, 1000);
+
+    // Toggle time speed
+    timeToggle.addEventListener('click', () => {
+        if (timeMultiplier === 1) {
+            timeMultiplier = 30;
+            timeToggle.style.transform = 'rotate(90deg)';
+            timeToggle.style.background = 'linear-gradient(90deg, #ff4d4d, #ff6f6f)';
+            timeToggle.style.boxShadow = '0 0 8px rgba(255, 77, 77, 0.8)';
+        } else {
+            timeMultiplier = 1;
+            timeToggle.style.transform = 'rotate(0deg)';
+            timeToggle.style.background = 'linear-gradient(135deg, #6b3fa0, #8a54c2)';
+            timeToggle.style.boxShadow = '0 0 8px rgba(107, 63, 160, 0.8)';
+        }
+    });
+
+    // Switch content function
+    function switchContent(contentHTML, callback) {
+        if (activeFlightsInterval) {
+            clearInterval(activeFlightsInterval);
+            activeFlightsInterval = null;
+        }
+        contentArea.style.opacity = '0';
+        setTimeout(() => {
+            contentArea.innerHTML = contentHTML;
+            contentArea.style.opacity = '1';
+            if (callback) callback();
+            currentContent = contentHTML.includes('<h2>Active Flights</h2>') ? 'activeFlights' : null;
+            if (currentContent === 'activeFlights') {
+                activeFlightsInterval = setInterval(() => activeFlightsBtn.click(), 5000);
+            }
+        }, 300);
+    }
+
+    // Great circle distance calculator (in nautical miles)
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 3440; // Earth's radius in nautical miles
+        const φ1 = lat1 * Math.PI / 180;
+        const φ2 = lat2 * Math.PI / 180;
+        const Δφ = (lat2 - lat1) * Math.PI / 180;
+        const Δλ = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                  Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    }
+
+    // Flight time calculator (in hours, includes 0.5h buffer)
+    function calculateFlightTime(distance) {
+        const speed = 500; // Average speed in knots
+        const flightTime = distance / speed + 0.5;
+        return Math.ceil(flightTime);
+    }
+
+    // Total unavailable time (2x flight time + 1h turnaround)
+    function calculateTotalTime(flightTime) {
+        return 2 * flightTime + 1;
+    }
+
+    // Function to display fleet
+    function showFleet() {
+        currentContent = 'fleet';
+        
+        if (fleet.length === 0) {
+            switchContent('<h3>Your Fleet</h3><p>You have no aircraft in your fleet.</p>');
+            return;
+        }
+        
+        switchContent(`
+            <h3>Your Fleet</h3>
+            <div class="fleet-display">
+                ${fleet.map((aircraft, index) => `
+                    <div class="aircraft-option">
+                        <h4>${aircraft.name} (${aircraft.registration})</h4>
+                        <div class="aircraft-details">
+                            <p><strong>Configuration:</strong> 
+                                ${aircraft.seatConfig.firstClass > 0 ? `${aircraft.seatConfig.firstClass} First Class` : ''}
+                                ${aircraft.seatConfig.businessClass > 0 ? `${aircraft.seatConfig.businessClass} Business` : ''}
+                                ${aircraft.seatConfig.premiumEconomy > 0 ? `${aircraft.seatConfig.premiumEconomy} Premium Economy` : ''}
+                                ${aircraft.seatConfig.economy > 0 ? `${aircraft.seatConfig.economy} Economy` : ''}
+                            </p>
+                            <p><strong>Total Seats:</strong> ${
+                                aircraft.seatConfig.firstClass + 
+                                aircraft.seatConfig.businessClass + 
+                                aircraft.seatConfig.premiumEconomy + 
+                                aircraft.seatConfig.economy
+                            }</p>
+                            <p><strong>Purchase Price:</strong> $${(aircraft.purchasePrice/1000000).toLocaleString()}M</p>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `);
+    }
+
+    // Function to display aircraft selling UI
+    function showSellAircraft() {
+        currentContent = 'sellAircraft';
+        const contentDiv = document.getElementById('content');
+        
+        if (fleet.length === 0) {
+            contentDiv.innerHTML = `
+                <div class="empty-fleet-message">
+                    <h2>No Aircraft Available</h2>
+                    <p>Your fleet is currently empty. Purchase aircraft to see them here.</p>
+                </div>
+            `;
+            return;
+        }
+
+        contentDiv.innerHTML = `
+            <div class="section-header">
+                <h2>Sell Aircraft</h2>
+                <p class="sell-instructions">Select an aircraft to sell. You'll receive 80% of the original purchase price.</p>
+            </div>
+            <div class="fleet-display">
+                ${fleet.map((aircraft, index) => `
+                    <div class="aircraft-option">
+                        <h3>${aircraft.name}</h3>
+                        <p>Registration: ${aircraft.registration}</p>
+                        <p>Configuration: ${aircraft.configuration}</p>
+                        <p>Total Seats: ${aircraft.seats}</p>
+                        <p class="price">Sale Value: $${(aircraft.purchasePrice * 0.8).toLocaleString()}</p>
+                        <div class="sell-action">
+                            <button class="discontinue-button" onclick="sellAircraft(${index})">Sell Aircraft</button>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    function sellAircraft(index) {
+        const aircraft = fleet[index];
+        const salePrice = aircraft.purchasePrice * 0.8;
+        
+        if (confirm(`Are you sure you want to sell ${aircraft.name} (${aircraft.registration}) for $${salePrice.toLocaleString()}?`)) {
+            money += salePrice;
+            fleet.splice(index, 1);
+            updateTrackers();
+            showSellAircraft();
+            showAlert('Aircraft sold successfully!', 'success');
+        }
+    }
+
+    // Fleet button action
+    fleetBtn.addEventListener('click', () => {
+        switchContent(`
+            <h2>Fleet Management</h2>
+            <div class="fleet-buttons">
+                <button id="buyAircraftBtn">Buy Aircraft</button>
+                <button id="viewFleetBtn">View Fleet</button>
+                <button id="sellAircraftBtn">Sell Aircraft</button>
+            </div>
+            <div id="fleetContent"></div>
+        `, () => {
+            const buyAircraftBtn = document.getElementById('buyAircraftBtn');
+            const viewFleetBtn = document.getElementById('viewFleetBtn');
+            const sellAircraftBtn = document.getElementById('sellAircraftBtn');
+
+            buyAircraftBtn.addEventListener('click', showAircraftPurchase);
+            viewFleetBtn.addEventListener('click', showFleet);
+            sellAircraftBtn.addEventListener('click', showSellAircraft);
+        });
+    });
+
+    // Function to show aircraft purchase options
+    function showAircraftPurchase() {
+        switchContent(`
+            <h3>Purchase Aircraft</h3>
+            <div class="fleet-display">
+                ${availableAircraft.map((aircraft, index) => `
+                    <div class="aircraft-option">
+                        <h4>${aircraft.name}</h4>
+                        <div class="aircraft-details">
+                            <p><strong>Maximum Capacity:</strong> ${aircraft.maxCapacity} seats</p>
+                            <p><strong>Purchase Price:</strong> $${(aircraft.purchasePrice/1000000).toLocaleString()}M</p>
+                        </div>
+                        <button id="selectAircraftBtn-${index}" class="purchase-button">Select</button>
+                    </div>
+                `).join('')}
+            </div>
+        `, () => {
+            availableAircraft.forEach((aircraft, index) => {
+                const selectBtn = document.getElementById(`selectAircraftBtn-${index}`);
+                selectBtn.addEventListener('click', () => {
+                    showSeatConfigurations(aircraft);
+                });
+            });
+        });
+    }
+
+    // Function to show seating configurations
+    function showSeatConfigurations(aircraft) {
+        switchContent(`
+            <h3>Select Seating Configuration for ${aircraft.name}</h3>
+            <div class="seat-config-container">
+                <div class="seat-config-header">
+                    <h3>Choose Cabin Layout</h3>
+                    <p class="total-capacity">Aircraft Maximum Capacity: ${aircraft.maxCapacity} seats</p>
+                </div>
+                <div class="seat-options">
+                    ${aircraft.configurations.map((config, index) => {
+                        const totalSeats = config.seats.firstClass + config.seats.businessClass + 
+                                         config.seats.premiumEconomy + config.seats.economy;
+                        return `
+                            <div class="seat-option" id="config-option-${index}">
+                                <div class="option-header">
+                                    <h4>${config.name}</h4>
+                                    <p class="option-price">$${(aircraft.purchasePrice/1000000).toLocaleString()}M</p>
+                                </div>
+                                <div class="option-details">
+                                    <div class="seat-counts">
+                                        ${config.seats.firstClass > 0 ? `<span>${config.seats.firstClass} First Class</span>` : ''}
+                                        ${config.seats.businessClass > 0 ? `<span>${config.seats.businessClass} Business</span>` : ''}
+                                        ${config.seats.premiumEconomy > 0 ? `<span>${config.seats.premiumEconomy} Premium Economy</span>` : ''}
+                                        ${config.seats.economy > 0 ? `<span>${config.seats.economy} Economy</span>` : ''}
+                                    </div>
+                                    <p class="option-description">Total: ${totalSeats} seats</p>
+                                    <div class="option-select">
+                                        <button id="select-config-${index}" class="purchase-button">Select</button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        `, () => {
+            aircraft.configurations.forEach((config, index) => {
+                const configOption = document.getElementById(`config-option-${index}`);
+                const selectBtn = document.getElementById(`select-config-${index}`);
+                
+                configOption.addEventListener('click', () => {
+                    document.querySelectorAll('.seat-option').forEach(el => el.classList.remove('selected'));
+                    configOption.classList.add('selected');
+                });
+                
+                selectBtn.addEventListener('click', () => {
+                    showRegistrationCountry(aircraft, config);
+                });
+            });
+        });
+    }
+
+    // Function to show registration country selection
+    function showRegistrationCountry(aircraft, config) {
+        switchContent(`
+            <h3>Select Registration Country for ${aircraft.name}</h3>
+            <div class="registration-container">
+                <div class="registration-header">
+                    <h3>Choose Registration Country</h3>
+                    <p class="registration-info">Select the country where your aircraft will be registered</p>
+                </div>
+                <div class="registration-options">
+                    ${registrationCountries.map((country, index) => `
+                        <div class="registration-option" id="reg-option-${index}">
+                            <div class="option-header">
+                                <h4>${country.name}</h4>
+                                <p class="registration-prefix">Prefix: ${country.prefix}</p>
+                            </div>
+                            <div class="option-select">
+                                <button id="select-reg-${index}" class="purchase-button">Select</button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `, () => {
+            registrationCountries.forEach((country, index) => {
+                const selectBtn = document.getElementById(`select-reg-${index}`);
+                selectBtn.addEventListener('click', () => {
+                    const randomLetters = String.fromCharCode(65 + Math.floor(Math.random() * 26)) + 
+                                        String.fromCharCode(65 + Math.floor(Math.random() * 26)) +
+                                        String.fromCharCode(65 + Math.floor(Math.random() * 26));
+                    const registration = country.prefix + randomLetters;
+                    confirmPurchaseAircraft(aircraft, config, registration);
+                });
+            });
+        });
+    }
+
+    // Modified confirmPurchaseAircraft function to accept registration
+    function confirmPurchaseAircraft(aircraft, config, registration) {
+        showConfirm("Confirm Purchase", `
+            <h4>Confirm your purchase of ${aircraft.name}</h4>
+            <p><strong>Configuration:</strong> ${config.name}</p>
+            <p><strong>Registration:</strong> ${registration}</p>
+            <p><strong>Price:</strong> $${(aircraft.purchasePrice/1000000).toLocaleString()}M</p>
+        `).then(confirmed => {
+            if (confirmed) {
+                if (money >= aircraft.purchasePrice) {
+                    // Add aircraft to fleet
+                    fleet.push({
+                        name: aircraft.name,
+                        registration: registration,
+                        purchasePrice: aircraft.purchasePrice,
+                        configuration: config.name,
+                        seats: config.seats.firstClass + config.seats.businessClass + 
+                               config.seats.premiumEconomy + config.seats.economy,
+                        seatConfig: config.seats
+                    });
+                    
+                    // Deduct money
+                    money -= aircraft.purchasePrice;
+                    updateTrackers();
+                    
+                    showAlert("Purchase Complete", `
+                        <p>Your new ${aircraft.name} with registration ${registration} has been added to your fleet.</p>
+                        <p>The aircraft has been configured with the ${config.name} cabin layout.</p>
+                    `).then(() => {
+                        fleetBtn.click();
+                    });
+                } else {
+                    showAlert("Insufficient Funds", `
+                        <p>You don't have enough money to purchase this aircraft.</p>
+                        <p>Required: $${(aircraft.purchasePrice/1000000).toLocaleString()}M</p>
+                        <p>Available: $${(money/1000000).toLocaleString()}M</p>
+                    `);
+                }
+            }
+        });
+    }
+
+    // Hubs button action
+    hubsBtn.addEventListener('click', () => {
+        switchContent(`
+            <h2>Hubs</h2>
+            <div class="hub-buttons">
+                <button id="newHubBtn">New Hub</button>
+                <button id="viewHubsBtn">View Hubs</button>
+                <button id="discontinueHubsBtn">Discontinue Hubs</button>
+            </div>
+        `, () => {
+            const newHubBtn = document.getElementById('newHubBtn');
+            const viewHubsBtn = document.getElementById('viewHubsBtn');
+            const discontinueHubsBtn = document.getElementById('discontinueHubsBtn');
+
+            newHubBtn.addEventListener('click', () => {
+                switchContent(`
+                    <h3>Select New Hub</h3>
+                    <div id="hubOptions">
+                        ${availableHubs
+                            .filter(hub => !playerHubs.includes(hub))
+                            .map((hub, index) => `
+                                <div class="aircraft-option">
+                                    <p>${hub}</p>
+                                    <button id="addHubBtn-${index}" class="purchase-button">Add Hub ($10M)</button>
+                                </div>
+                            `)
+                            .join('')}
+                    </div>
+                `, () => {
+                    availableHubs.filter(hub => !playerHubs.includes(hub)).forEach((hub, index) => {
+                        const addHubBtn = document.getElementById(`addHubBtn-${index}`);
+                        addHubBtn.addEventListener('click', () => {
+                            const hubCost = 10000000;
+                            if (money >= hubCost) {
+                                money -= hubCost;
+                                playerHubs.push(hub);
+                                updateTrackers();
+                                alert(`You added ${hub} as a hub!`);
+                                newHubBtn.click();
+                            } else {
+                                alert('Insufficient funds to add this hub.');
+                            }
+                        });
+                    });
+                });
+            });
+
+            viewHubsBtn.addEventListener('click', () => {
+                if (playerHubs.length === 0 || (playerHubs.length === 1 && playerHubs[0] === 'No Hub Selected')) {
+                    switchContent(`
+                        <div class="hub-view-container">
+                            <div class="section-header">
+                                <h3>Your Hubs</h3>
+                                <p class="section-description">You have no hubs. Start by adding a new hub to expand your airline's network.</p>
+                            </div>
+                        </div>
+                    `);
+                    return;
+                }
+                
+                switchContent(`
+                    <div class="hub-view-container">
+                        <div class="section-header">
+                            <h3>Your Hubs</h3>
+                            <p class="section-description">Overview of your airline's operational hubs and their performance metrics.</p>
+                        </div>
+                        <div class="hub-summary">
+                            <div class="summary-stat">
+                                <i class="fas fa-plane-arrival"></i>
+                                <div class="stat-details">
+                                    <span class="stat-value">${playerHubs.length}</span>
+                                    <span class="stat-label">Total Hubs</span>
+                                </div>
+                            </div>
+                            <div class="summary-stat">
+                                <i class="fas fa-route"></i>
+                                <div class="stat-details">
+                                    <span class="stat-value">${playerRoutes.length}</span>
+                                    <span class="stat-label">Total Routes</span>
+                                </div>
+                            </div>
+                            <div class="summary-stat">
+                                <i class="fas fa-plane-departure"></i>
+                                <div class="stat-details">
+                                    <span class="stat-value">${scheduledFlights.length}</span>
+                                    <span class="stat-label">Total Flights</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="hub-grid">
+                            ${playerHubs
+                                .filter(hub => hub !== 'No Hub Selected')
+                                .map(hub => {
+                                    const hubRoutes = playerRoutes.filter(route => route.from === hub || route.to === hub);
+                                    const hubFlights = scheduledFlights.filter(flight => {
+                                        const route = playerRoutes[flight.routeIndex];
+                                        return route && (route.from === hub || route.to === hub);
+                                    });
+                                    
+                                    // Calculate connected cities
+                                    const connectedCities = new Set();
+                                    hubRoutes.forEach(route => {
+                                        if (route.from === hub) connectedCities.add(route.to);
+                                        else connectedCities.add(route.from);
+                                    });
+
+                                    // Calculate daily flights average
+                                    const dailyFlights = Math.round(hubFlights.length / 7); // Simple average
+
+                                    return `
+                                        <div class="hub-card ${hub === gameState.hub ? 'primary' : ''}">
+                                            <div class="hub-card-header">
+                                                <div class="hub-icon">
+                                                    <i class="fas fa-plane-departure"></i>
+                                                </div>
+                                                <div class="hub-status ${hub === gameState.hub ? 'primary-hub' : 'secondary-hub'}">
+                                                    ${hub === gameState.hub ? 'Primary Hub' : 'Secondary Hub'}
+                                                </div>
+                                            </div>
+                                            <div class="hub-details">
+                                                <h4 class="hub-code">${hub}</h4>
+                                                <p class="hub-location">${hubCoordinates[hub] ? `${hubCoordinates[hub].lat}°, ${hubCoordinates[hub].lon}°` : 'Location data unavailable'}</p>
+                                                <div class="hub-metrics">
+                                                    <div class="metric">
+                                                        <i class="fas fa-route"></i>
+                                                        <div class="metric-details">
+                                                            <span class="metric-value">${hubRoutes.length}</span>
+                                                            <span class="metric-label">Routes</span>
+                                                        </div>
+                                                    </div>
+                                                    <div class="metric">
+                                                        <i class="fas fa-city"></i>
+                                                        <div class="metric-details">
+                                                            <span class="metric-value">${connectedCities.size}</span>
+                                                            <span class="metric-label">Connected Cities</span>
+                                                        </div>
+                                                    </div>
+                                                    <div class="metric">
+                                                        <i class="fas fa-plane"></i>
+                                                        <div class="metric-details">
+                                                            <span class="metric-value">${dailyFlights}</span>
+                                                            <span class="metric-label">Daily Flights</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="connected-routes">
+                                                    <h5>Connected Routes</h5>
+                                                    <div class="route-list">
+                                                        ${hubRoutes.map(route => `
+                                                            <div class="route-item">
+                                                                <span>${route.from}</span>
+                                                                <i class="fas fa-arrow-right"></i>
+                                                                <span>${route.to}</span>
+                                                            </div>
+                                                        `).join('')}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                        </div>
+                    </div>
+                `);
+            });
+
+            discontinueHubsBtn.addEventListener('click', () => {
+                if (playerHubs.length <= 1 || (playerHubs.length === 1 && playerHubs[0] === 'No Hub Selected')) {
+                    switchContent('<h3>Discontinue Hubs</h3><p>You have no hubs to discontinue.</p>');
+                    return;
+                }
+                switchContent(`
+                    <div class="hub-discontinue-container">
+                        <div class="section-header">
+                            <h3>Discontinue Hubs</h3>
+                            <p class="section-description">Select a hub to discontinue operations. You will receive a $5M refund for each discontinued hub.</p>
+                        </div>
+                        <div class="hub-grid">
+                            ${playerHubs
+                                .filter(hub => hub !== gameState.hub && hub !== 'No Hub Selected')
+                                .map((hub, index) => `
+                                    <div class="hub-card" data-hub="${hub}">
+                                        <div class="hub-card-header">
+                                            <div class="hub-icon">
+                                                <i class="fas fa-plane-departure"></i>
+                                            </div>
+                                            <div class="hub-status ${hub === gameState.hub ? 'primary-hub' : 'secondary-hub'}">
+                                                ${hub === gameState.hub ? 'Primary Hub' : 'Secondary Hub'}
+                                            </div>
+                                        </div>
+                                        <div class="hub-details">
+                                            <h4 class="hub-code">${hub}</h4>
+                                            <p class="hub-location">${hubCoordinates[hub] ? `${hubCoordinates[hub].lat}°, ${hubCoordinates[hub].lon}°` : 'Location data unavailable'}</p>
+                                            <div class="hub-stats">
+                                                <div class="stat">
+                                                    <i class="fas fa-route"></i>
+                                                    <span>${playerRoutes.filter(route => route.from === hub || route.to === hub).length} Routes</span>
+                                                </div>
+                                                <div class="stat">
+                                                    <i class="fas fa-plane"></i>
+                                                    <span>${scheduledFlights.filter(flight => {
+                                                        const route = playerRoutes[flight.routeIndex];
+                                                        return route && (route.from === hub || route.to === hub);
+                                                    }).length} Flights</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="hub-actions">
+                                            <button class="discontinue-hub-btn" data-hub="${hub}">
+                                                <i class="fas fa-times-circle"></i>
+                                                Discontinue Hub
+                                            </button>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                        </div>
+                    </div>
+                `, () => {
+                    // Add event listeners for discontinue buttons
+                    document.querySelectorAll('.discontinue-hub-btn').forEach(button => {
+                        button.addEventListener('click', async () => {
+                            const hub = button.dataset.hub;
+                            const hubCard = button.closest('.hub-card');
+                            
+                            // Show confirmation popup
+                            const confirmed = await showConfirm(
+                                'Confirm Hub Discontinuation',
+                                `Are you sure you want to discontinue operations at ${hub}? This action cannot be undone.`
+                            );
+
+                            if (confirmed) {
+                                // Add discontinue animation
+                                hubCard.classList.add('discontinuing');
+                                
+                                // Wait for animation
+                                setTimeout(() => {
+                                    const index = playerHubs.indexOf(hub);
+                                    const refundValue = 5000000;
+                                    money += refundValue;
+                                    playerHubs.splice(index, 1);
+                                    updateTrackers();
+                                    
+                                    // Show success message
+                                    showAlert(
+                                        'Hub Discontinued',
+                                        `Operations at ${hub} have been discontinued. $${refundValue.toLocaleString()} has been credited to your account.`
+                                    );
+                                    
+                                    // Refresh the discontinue hubs view
+                                    discontinueHubsBtn.click();
+                                }, 500);
+                            }
+                        });
+                    });
+                });
+            });
+        });
+    });
+
+    // Routes button action
+    routesBtn.addEventListener('click', () => {
+        switchContent(`
+            <h2>Routes</h2>
+            <div class="route-buttons">
+                <button id="openNewRouteBtn">Open New Route</button>
+                <button id="analyzeRoutesBtn">Analyze Routes</button>
+                <button id="scheduleFlightsBtn">Schedule Flights</button>
+                <button id="discontinueRouteBtn">Discontinue Route</button>
+            </div>
+        `, () => {
+            const openNewRouteBtn = document.getElementById('openNewRouteBtn');
+            const analyzeRoutesBtn = document.getElementById('analyzeRoutesBtn');
+            const scheduleFlightsBtn = document.getElementById('scheduleFlightsBtn');
+            const discontinueRouteBtn = document.getElementById('discontinueRouteBtn');
+
+            openNewRouteBtn.addEventListener('click', () => {
+                if (playerHubs.length === 0 || (playerHubs.length === 1 && playerHubs[0] === 'No Hub Selected')) {
+                    switchContent('<h3>Open New Route</h3><p>You need at least one hub to open a route.</p>');
+                    return;
+                }
+
+                switchContent(`
+                    <h3>Step 1: Select Hub</h3>
+                    <div id="hubOptions">
+                        ${playerHubs
+                            .filter(hub => hub !== 'No Hub Selected')
+                            .map((hub, index) => `
+                                <div class="aircraft-option">
+                                    <p>${hub}</p>
+                                    <button id="selectHubBtn-${index}" class="purchase-button">Select</button>
+                                </div>
+                            `)
+                            .join('')}
+                    </div>
+                `, () => {
+                    playerHubs.filter(hub => hub !== 'No Hub Selected').forEach((hub, index) => {
+                        const selectHubBtn = document.getElementById(`selectHubBtn-${index}`);
+                        selectHubBtn.addEventListener('click', () => {
+                            const selectedHub = hub;
+
+                            switchContent(`
+                                <h3>Step 2: Select Destination</h3>
+                                <div id="routeOptions">
+                                    ${availableHubs
+                                        .filter(dest => !playerRoutes.some(route => route.from === selectedHub && route.to === dest))
+                                        .map((dest, destIndex) => `
+                                            <div class="aircraft-option">
+                                                <p>${dest}</p>
+                                                <button id="selectDestBtn-${destIndex}" class="purchase-button">Select</button>
+                                            </div>
+                                        `)
+                                        .join('')}
+                                </div>
+                            `, () => {
+                                availableHubs.filter(dest => !playerRoutes.some(route => route.from === selectedHub && route.to === dest)).forEach((dest, destIndex) => {
+                                    const selectDestBtn = document.getElementById(`selectDestBtn-${destIndex}`);
+                                    selectDestBtn.addEventListener('click', () => {
+                                        const selectedDest = dest;
+
+                                        switchContent(`
+                                            <h3>Step 3: Confirm Route</h3>
+                                            <p>Route: ${selectedHub} to ${selectedDest}</p>
+                                            <p>Cost: $50M</p>
+                                            <button id="confirmRouteBtn" class="purchase-button">Confirm</button>
+                                        `, () => {
+                                            const routeCost = 50000000;
+                                            if (money >= routeCost) {
+                                                money -= routeCost;
+                                                playerRoutes.push({ 
+                                                    from: selectedHub, 
+                                                    to: selectedDest,
+                                                    baseFare: {
+                                                        economy: 100, // Base fare per mile for economy
+                                                        premiumEconomy: 150, // Base fare per mile for premium economy
+                                                        business: 300, // Base fare per mile for business
+                                                        firstClass: 500, // Base fare per mile for first class
+                                                    },
+                                                    fareMultiplier: 1.0 // Default fare multiplier
+                                                });
+                                                updateTrackers();
+                                                alert(`Route ${selectedHub} to ${selectedDest} opened!`);
+                                                routesBtn.click();
+                                            } else {
+                                                alert('Insufficient funds to open this route.');
+                                            }
+                                        });
+                                    });
+                                });
+                            });
+                        });
+                    });
+                });
+            });
+
+            analyzeRoutesBtn.addEventListener('click', () => {
+                if (playerRoutes.length === 0) {
+                    switchContent('<h3>Analyze Routes</h3><p>You have no routes to analyze.</p>');
+                    return;
+                }
+
+                // Calculate route statistics
+                const currentDateTime = formatGameTime(gameTime);
+                const currentMinute = gameTime;
+                const weekInMinutes = 7 * 24 * 60;
+                const dayInMinutes = 24 * 60;
+
+                // Get all flights for the current week
+                const currentWeekFlights = scheduledFlights.filter(f => {
+                    const flightStart = f.startMinute;
+                    const weekStart = currentMinute - (currentMinute % weekInMinutes);
+                    return flightStart >= weekStart && flightStart < weekStart + weekInMinutes;
+                });
+
+                // Calculate statistics for each route
+                const routeStats = playerRoutes.map((route, index) => {
+                    const routeFlights = currentWeekFlights.filter(f => f.routeIndex === index);
+                    const dailyFlights = routeFlights.filter(f => {
+                        const flightStart = f.startMinute;
+                        const dayStart = currentMinute - (currentMinute % dayInMinutes);
+                        return flightStart >= dayStart && flightStart < dayStart + dayInMinutes;
+                    }).length;
+
+                    const weeklyFlights = routeFlights.length;
+                    const totalPassengers = routeFlights.reduce((sum, flight) => sum + flight.passengers, 0);
+                    const aircraftCapacities = {
+                        'Airbus A320neo': 180,
+                        'Airbus A330-300': 400
+                    };
+                    const maxCapacity = routeFlights.reduce((sum, flight) => 
+                        sum + (aircraftCapacities[flight.aircraft] || 180), 0);
+                    const loadFactor = maxCapacity > 0 ? (totalPassengers / maxCapacity) * 100 : 0;
+
+                    return {
+                        route,
+                        dailyFlights,
+                        weeklyFlights,
+                        totalPassengers,
+                        loadFactor
+                    };
+                });
+
+                switchContent(`
+                    <h2>Route Analysis</h2>
+                    <div class="route-analysis-container">
+                        <div class="route-stats-summary">
+                            <div class="stat-card">
+                                <h3>Total Routes</h3>
+                                <p class="stat-value">${playerRoutes.length}</p>
+                            </div>
+                            <div class="stat-card">
+                                <h3>Total Weekly Flights</h3>
+                                <p class="stat-value">${currentWeekFlights.length}</p>
+                            </div>
+                            <div class="stat-card">
+                                <h3>Total Weekly Passengers</h3>
+                                <p class="stat-value">${currentWeekFlights.reduce((sum, f) => sum + f.passengers, 0).toLocaleString()}</p>
+                            </div>
+                            <div class="stat-card">
+                                <h3>Average Load Factor</h3>
+                                <p class="stat-value">${(routeStats.reduce((sum, r) => sum + r.loadFactor, 0) / routeStats.length).toFixed(1)}%</p>
+                            </div>
+                        </div>
+                        <div class="route-details">
+                            ${routeStats.map(stat => `
+                                <div class="route-card">
+                                    <div class="route-header">
+                                        <h3>${stat.route.from} → ${stat.route.to}</h3>
+                                        <div class="route-status ${stat.loadFactor >= 80 ? 'high-demand' : stat.loadFactor >= 50 ? 'medium-demand' : 'low-demand'}">
+                                            ${stat.loadFactor >= 80 ? 'High Demand' : stat.loadFactor >= 50 ? 'Medium Demand' : 'Low Demand'}
+                                        </div>
+                                    </div>
+                                    <div class="route-stats-grid">
+                                        <div class="stat-item">
+                                            <span class="stat-label">Daily Flights</span>
+                                            <span class="stat-value">${stat.dailyFlights}</span>
+                                        </div>
+                                        <div class="stat-item">
+                                            <span class="stat-label">Weekly Flights</span>
+                                            <span class="stat-value">${stat.weeklyFlights}</span>
+                                        </div>
+                                        <div class="stat-item">
+                                            <span class="stat-label">Weekly Passengers</span>
+                                            <span class="stat-value">${stat.totalPassengers.toLocaleString()}</span>
+                                        </div>
+                                        <div class="stat-item">
+                                            <span class="stat-label">Load Factor</span>
+                                            <span class="stat-value">${stat.loadFactor.toFixed(1)}%</span>
+                                        </div>
+                                    </div>
+                                    <div class="load-factor-bar">
+                                        <div class="load-factor-progress" style="width: ${stat.loadFactor}%"></div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `);
+            });
+
+            scheduleFlightsBtn.addEventListener('click', () => {
+                if (playerRoutes.length === 0) {
+                    switchContent('<h3>Schedule Flights</h3><p>You have no routes to schedule flights for.</p>');
+                    return;
+                }
+
+                if (fleet.length === 0) {
+                    switchContent('<h3>Schedule Flights</h3><p>You need at least one aircraft to schedule a flight.</p>');
+                    return;
+                }
+
+                // Step 1: Aircraft Selection
+                switchContent(`
+                    <h3>Step 1: Select Aircraft</h3>
+                    <div class="aircraft-selection">
+                        ${fleet.map((aircraft, index) => `
+                            <div class="aircraft-option">
+                                <p>${aircraft.name}</p>
+                                <button id="selectAircraftBtn-${index}" class="purchase-button">Select</button>
+                            </div>
+                        `).join('')}
+                    </div>
+                `, () => {
+                    fleet.forEach((aircraft, index) => {
+                        const selectAircraftBtn = document.getElementById(`selectAircraftBtn-${index}`);
+                        selectAircraftBtn.addEventListener('click', () => {
+                            const selectedAircraft = aircraft;
+                            const selectedAircraftIndex = index;
+
+                            // Step 2: Route Selection
+                            switchContent(`
+                                <h3>Step 2: Select Route</h3>
+                                <div class="route-selection">
+                                    ${playerRoutes.map((route, routeIndex) => `
+                                        <div class="aircraft-option">
+                                            <p>${route.from} → ${route.to}</p>
+                                            <button id="selectRouteBtn-${routeIndex}" class="purchase-button">Select</button>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            `, () => {
+                                playerRoutes.forEach((route, routeIndex) => {
+                                    const selectRouteBtn = document.getElementById(`selectRouteBtn-${routeIndex}`);
+                                    selectRouteBtn.addEventListener('click', () => {
+                                        const selectedRoute = route;
+                                        const selectedRouteIndex = routeIndex;
+
+                                        // Get current week's dates
+                                        const currentDateTime = formatGameTime(gameTime);
+                                        const currentMinute = gameTime;
+                                        const weekInMinutes = 7 * 24 * 60;
+                                        const weekStart = currentMinute - (currentMinute % weekInMinutes);
+                                        const weekDates = [];
+                                        for (let i = 0; i < 7; i++) {
+                                            weekDates.push(formatGameTime(weekStart + (i * 24 * 60)).date);
+                                        }
+
+                                        // Create calendar HTML
+                                        const calendarHTML = `
+                                            <h3>Schedule Flight: ${selectedAircraft.name} on ${selectedRoute.from} → ${selectedRoute.to}</h3>
+                                            <div class="calendar-scheduler">
+                                                <div class="calendar-header">
+                                                    <button id="clearWeekBtn" class="clear-week-btn">
+                                                        <i class="fas fa-trash"></i>
+                                                        Clear Week
+                                                    </button>
+                                                </div>
+                                                <div class="calendar-grid">
+                                                    ${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => `
+                                                        <div class="day-header">${day}</div>
+                                                    `).join('')}
+                                                    <div class="time-column">
+                                                        ${Array.from({length: 24}, (_, i) => `
+                                                            <div class="time-slot">${String(i).padStart(2, '0')}:00</div>
+                                                        `).join('')}
+                                                    </div>
+                                                    ${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, dayIndex) => `
+                                                        <div class="day-column">
+                                                            ${Array.from({length: 24}, (_, hourIndex) => `
+                                                                <div class="calendar-cell" 
+                                                                     data-day="${dayIndex}" 
+                                                                     data-hour="${hourIndex}"
+                                                                     data-date="${weekDates[dayIndex]}">
+                                                                </div>
+                                                            `).join('')}
+                                                        </div>
+                                                    `).join('')}
+                                                </div>
+                                                <div class="repeat-schedule-section">
+                                                    <span class="repeat-schedule-label">
+                                                        <i class="fas fa-sync-alt"></i>
+                                                        Repeat Schedule Until:
+                                                    </span>
+                                                    <div class="date-picker-container">
+                                                        <input type="date" class="date-picker-input" id="repeatUntilDate" min="${weekDates[6]}" />
+                                                        <button class="date-picker-calendar-btn">
+                                                            <i class="fas fa-calendar-alt"></i>
+                                                        </button>
+                                                    </div>
+                                                    <button class="repeat-schedule-btn" id="applyRepeatSchedule">
+                                                        <i class="fas fa-check"></i>
+                                                        Apply Repeat Schedule
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        `;
+
+                                        switchContent(calendarHTML, () => {
+                                            const calendarCells = document.querySelectorAll('.calendar-cell');
+                                            let selectedCells = [];
+                                            let isSelecting = false;
+
+                                            // Function to check if a time slot is available for an aircraft
+                                            function isTimeSlotAvailable(dayIndex, hourIndex, totalTime) {
+                                                const startMinute = weekStart + (dayIndex * 24 * 60) + (hourIndex * 60);
+                                                const endMinute = startMinute + (totalTime * 60);
+
+                                                return !scheduledFlights.some(flight => {
+                                                    const flightStart = flight.startMinute;
+                                                    const flightEnd = flight.startMinute + flight.totalTime * 60;
+                                                    return flight.registration === selectedAircraft.registration && 
+                                                           ((startMinute >= flightStart && startMinute < flightEnd) ||
+                                                            (endMinute > flightStart && endMinute <= flightEnd) ||
+                                                            (startMinute <= flightStart && endMinute >= flightEnd));
+                                                });
+                                            }
+
+                                            // Function to update calendar with scheduled flights
+                                            function updateCalendar() {
+                                                calendarCells.forEach(cell => {
+                                                    cell.classList.remove('scheduled', 'blocked');
+                                                    cell.innerHTML = '';
+                                                });
+
+                                                scheduledFlights.forEach((flight, flightIndex) => {
+                                                    if (flight.registration !== selectedAircraft.registration) return;
+                                                    
+                                                    const flightStart = flight.startMinute;
+                                                    const flightEnd = flight.startMinute + flight.totalTime * 60;
+                                                    const startDateTime = formatGameTime(flightStart);
+                                                    const endDateTime = formatGameTime(flightEnd);
+
+                                                    // Find the cells that correspond to this flight
+                                                    const startDayIndex = weekDates.findIndex(date => date === startDateTime.date);
+                                                    if (startDayIndex !== -1) {
+                                                        const startHourIndex = parseInt(startDateTime.time.split(':')[0]);
+                                                        const endDayIndex = weekDates.findIndex(date => date === endDateTime.date);
+                                                        const endHourIndex = parseInt(endDateTime.time.split(':')[0]);
+
+                                                        // Mark all cells between start and end as scheduled
+                                                        for (let day = startDayIndex; day <= endDayIndex; day++) {
+                                                            const startHour = day === startDayIndex ? startHourIndex : 0;
+                                                            const endHour = day === endDayIndex ? endHourIndex : 23;
+                                                            
+                                                            for (let hour = startHour; hour <= endHour; hour++) {
+                                                                const cell = document.querySelector(`.calendar-cell[data-day="${day}"][data-hour="${hour}"]`);
+                                                                if (cell) {
+                                                                    cell.classList.add('scheduled');
+                                                                    cell.dataset.flightIndex = flightIndex;
+                                                                    if (hour === startHour && day === startDayIndex) {
+                                                                        const route = playerRoutes[flight.routeIndex];
+                                                                        cell.innerHTML = `
+                                                                            <div class="flight-info" data-flight-index="${flightIndex}">
+                                                                                <div class="route">${route.from} → ${route.to}</div>
+                                                                                <div class="aircraft">${flight.registration}</div>
+                                                                                <div class="passengers">${flight.passengers} pax</div>
+                                                                            </div>
+                                                                        `;
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                });
+
+                                                // Add click handler for scheduled blocks
+                                                document.querySelectorAll('.calendar-cell.scheduled').forEach(cell => {
+                                                    cell.addEventListener('click', (e) => {
+                                                        // Prevent this from triggering the cell selection
+                                                        e.stopPropagation();
+                                                        
+                                                        const flightIndex = parseInt(cell.dataset.flightIndex);
+                                                        const flight = scheduledFlights[flightIndex];
+                                                        const route = playerRoutes[flight.routeIndex];
+                                                        const startDateTime = formatGameTime(flight.startMinute);
+                                                        const endDateTime = formatGameTime(flight.startMinute + flight.totalTime * 60);
+
+                                                        createPopup(
+                                                            'Flight Details',
+                                                            `
+                                                            <div class="flight-details-popup">
+                                                                <div class="detail-row">
+                                                                    <span class="label">Route:</span>
+                                                                    <span class="value">${route.from} → ${route.to}</span>
+                                                                </div>
+                                                                <div class="detail-row">
+                                                                    <span class="label">Aircraft:</span>
+                                                                    <span class="value">${flight.registration}</span>
+                                                                </div>
+                                                                <div class="detail-row">
+                                                                    <span class="label">Departure:</span>
+                                                                    <span class="value">${startDateTime.date} ${startDateTime.time}</span>
+                                                                </div>
+                                                                <div class="detail-row">
+                                                                    <span class="label">Arrival:</span>
+                                                                    <span class="value">${endDateTime.date} ${endDateTime.time}</span>
+                                                                </div>
+                                                                <div class="detail-row">
+                                                                    <span class="label">Passengers:</span>
+                                                                    <span class="value">${flight.passengers}</span>
+                                                                </div>
+                                                                <div class="detail-row">
+                                                                    <span class="label">Revenue:</span>
+                                                                    <span class="value">$${flight.revenue.toLocaleString()}</span>
+                                                                </div>
+                                                            </div>
+                                                            `,
+                                                            [
+                                                                {
+                                                                    text: 'Remove Flight',
+                                                                    class: 'danger',
+                                                                    onClick: () => {
+                                                                        if (confirm(`Are you sure you want to remove this flight from ${route.from} to ${route.to}?`)) {
+                                                                            scheduledFlights.splice(flightIndex, 1);
+                                                                            updateCalendar();
+                                                                            closePopup();
+                                                                        }
+                                                                    }
+                                                                },
+                                                                {
+                                                                    text: 'Close',
+                                                                    class: 'secondary',
+                                                                    onClick: closePopup
+                                                                }
+                                                            ]
+                                                        );
+                                                    });
+                                                });
+                                            }
+
+                                            // Initialize calendar
+                                            updateCalendar();
+
+                                            // Add clear week button handler
+                                            const clearWeekBtn = document.getElementById('clearWeekBtn');
+                                            clearWeekBtn.addEventListener('click', function() {
+                                                // Remove all flights for the current aircraft
+                                                scheduledFlights = scheduledFlights.filter(flight => 
+                                                    flight.registration !== selectedAircraft.registration
+                                                );
+
+                                                // Clear all visual elements first
+                                                const cells = document.querySelectorAll('.calendar-cell');
+                                                cells.forEach(cell => {
+                                                    cell.className = 'calendar-cell';
+                                                    cell.innerHTML = '';
+                                                });
+
+                                                // Wait a brief moment then refresh the calendar
+                                                setTimeout(() => {
+                                                    updateCalendar();
+                                                }, 100);
+                                            });
+
+                                            // Initialize calendar
+                                            updateCalendar();
+
+                                            // Function to check if a date is within the current week
+                                            function isDateInCurrentWeek(dateStr) {
+                                                return weekDates.includes(dateStr);
+                                            }
+
+                                            // Initialize calendar with current schedules
+                                            updateCalendar();
+
+                                            // Handle cell selection
+                                            calendarCells.forEach(cell => {
+                                                cell.addEventListener('mousedown', () => {
+                                                    const dayIndex = parseInt(cell.dataset.day);
+                                                    const hourIndex = parseInt(cell.dataset.hour);
+
+                                                    // Calculate flight duration
+                                                    const fromCoords = hubCoordinates[selectedRoute.from] || { lat: 0, lon: 0 };
+                                                    const toCoords = hubCoordinates[selectedRoute.to] || { lat: 0, lon: 0 };
+                                                    const distance = calculateDistance(fromCoords.lat, fromCoords.lon, toCoords.lat, toCoords.lon);
+                                                    const flightDuration = calculateFlightTime(distance);
+                                                    const totalTime = calculateTotalTime(flightDuration);
+
+                                                    // Check if the time slot is available
+                                                    if (isTimeSlotAvailable(dayIndex, hourIndex, totalTime)) {
+                                                        isSelecting = true;
+                                                        selectedCells = [cell];
+                                                        cell.classList.add('selected');
+                                                    } else {
+                                                        alert(`This time slot is not available for ${selectedAircraft.registration}. Please choose another time.`);
+                                                    }
+                                                });
+
+                                                cell.addEventListener('mouseover', () => {
+                                                    if (isSelecting) {
+                                                        const dayIndex = parseInt(cell.dataset.day);
+                                                        const hourIndex = parseInt(cell.dataset.hour);
+                                                        const firstCell = selectedCells[0];
+                                                        const firstDayIndex = parseInt(firstCell.dataset.day);
+                                                        const firstHourIndex = parseInt(firstCell.dataset.hour);
+
+                                                        // Calculate flight duration
+                                                        const fromCoords = hubCoordinates[selectedRoute.from] || { lat: 0, lon: 0 };
+                                                        const toCoords = hubCoordinates[selectedRoute.to] || { lat: 0, lon: 0 };
+                                                        const distance = calculateDistance(fromCoords.lat, fromCoords.lon, toCoords.lat, toCoords.lon);
+                                                        const flightDuration = calculateFlightTime(distance);
+                                                        const totalTime = calculateTotalTime(flightDuration);
+
+                                                        // Clear previous selection
+                                                        selectedCells.forEach(c => c.classList.remove('selected'));
+                                                        selectedCells = [];
+
+                                                        // Select cells between first and current
+                                                        let isValidSelection = true;
+                                                        calendarCells.forEach(c => {
+                                                            const cDayIndex = parseInt(c.dataset.day);
+                                                            const cHourIndex = parseInt(c.dataset.hour);
+                                                            if (
+                                                                (cDayIndex > firstDayIndex && cDayIndex < dayIndex) ||
+                                                                (cDayIndex === firstDayIndex && cHourIndex >= firstHourIndex && cHourIndex <= hourIndex) ||
+                                                                (cDayIndex === dayIndex && cHourIndex >= firstHourIndex && cHourIndex <= hourIndex)
+                                                            ) {
+                                                                if (!isTimeSlotAvailable(cDayIndex, cHourIndex, totalTime)) {
+                                                                    isValidSelection = false;
+                                                                }
+                                                                c.classList.add('selected');
+                                                                selectedCells.push(c);
+                                                            }
+                                                        });
+
+                                                        if (!isValidSelection) {
+                                                            selectedCells.forEach(c => c.classList.remove('selected'));
+                                                            selectedCells = [];
+                                                            alert(`This time range is not available for ${selectedAircraft.registration}. Please choose another time.`);
+                                                        }
+                                                    }
+                                                });
+                                            });
+
+                                            document.addEventListener('mouseup', () => {
+                                                if (isSelecting && selectedCells.length > 0) {
+                                                    isSelecting = false;
+                                                    const firstCell = selectedCells[0];
+                                                    const lastCell = selectedCells[selectedCells.length - 1];
+                                                    const startDateTime = firstCell.dataset.date + ' ' + String(parseInt(firstCell.dataset.hour)).padStart(2, '0') + ':00';
+                                                    const endDateTime = lastCell.dataset.date + ' ' + String(parseInt(lastCell.dataset.hour)).padStart(2, '0') + ':00';
+
+                                                    if (confirm(`Schedule flight from ${startDateTime} to ${endDateTime} with ${selectedAircraft.registration}?`)) {
+                                                        const startMinute = weekStart + 
+                                                            (parseInt(firstCell.dataset.day) * 24 * 60) + 
+                                                            (parseInt(firstCell.dataset.hour) * 60);
+
+                                                        const maxPax = selectedAircraft.seats;
+                                                        const pax = Math.floor(Math.random() * (maxPax + 1));
+
+                                                        // Calculate immediate revenue
+                                                        const route = playerRoutes[selectedRouteIndex];
+                                                        const distance = calculateDistance(
+                                                            hubCoordinates[route.from].lat,
+                                                            hubCoordinates[route.from].lon,
+                                                            hubCoordinates[route.to].lat,
+                                                            hubCoordinates[route.to].lon
+                                                        );
+
+                                                        // Calculate revenue based on passenger class distribution and fares
+                                                        let revenue = 0;
+                                                        const totalSeats = selectedAircraft.seatConfig.firstClass + 
+                                                                            selectedAircraft.seatConfig.businessClass + 
+                                                                            selectedAircraft.seatConfig.premiumEconomy + 
+                                                                            selectedAircraft.seatConfig.economy;
+
+                                                        // Distribute passengers across classes based on configuration
+                                                        if (selectedAircraft.seatConfig.firstClass > 0) {
+                                                            const firstClassPax = Math.floor(pax * (selectedAircraft.seatConfig.firstClass / totalSeats));
+                                                            revenue += firstClassPax * route.baseFare.firstClass * distance * route.fareMultiplier;
+                                                        }
+                                                        if (selectedAircraft.seatConfig.businessClass > 0) {
+                                                            const businessPax = Math.floor(pax * (selectedAircraft.seatConfig.businessClass / totalSeats));
+                                                            revenue += businessPax * route.baseFare.business * distance * route.fareMultiplier;
+                                                        }
+                                                        if (selectedAircraft.seatConfig.premiumEconomy > 0) {
+                                                            const premiumPax = Math.floor(pax * (selectedAircraft.seatConfig.premiumEconomy / totalSeats));
+                                                            revenue += premiumPax * route.baseFare.premiumEconomy * distance * route.fareMultiplier;
+                                                        }
+                                                        if (selectedAircraft.seatConfig.economy > 0) {
+                                                            const economyPax = Math.floor(pax * (selectedAircraft.seatConfig.economy / totalSeats));
+                                                            revenue += economyPax * route.baseFare.economy * distance * route.fareMultiplier;
+                                                        }
+
+                                                        // Add revenue immediately
+                                                        money += Math.round(revenue);
+                                                        updateTrackers();
+
+                                                        scheduledFlights.push({
+                                                            routeIndex: selectedRouteIndex,
+                                                            registration: selectedAircraft.registration,
+                                                            startMinute,
+                                                            totalTime: calculateTotalTime(calculateFlightTime(calculateDistance(
+                                                                hubCoordinates[selectedRoute.from].lat,
+                                                                hubCoordinates[selectedRoute.from].lon,
+                                                                hubCoordinates[selectedRoute.to].lat,
+                                                                hubCoordinates[selectedRoute.to].lon
+                                                            ))),
+                                                            date: firstCell.dataset.date,
+                                                            completed: false,
+                                                            passengers: pax,
+                                                            isReturn: false,
+                                                            revenue: Math.round(revenue)
+                                                        });
+
+                                                        // Check if repeat schedule is set
+                                                        const repeatUntilDate = document.getElementById('repeatUntilDate').value;
+                                                        if (repeatUntilDate) {
+                                                            const shouldRepeat = confirm('Do you want to repeat this schedule weekly until the selected end date?');
+                                                            if (shouldRepeat) {
+                                                                // Calculate the base time for repeating
+                                                                const baseStartMinute = startMinute;
+                                                                const endDate = new Date(repeatUntilDate);
+                                                                let currentDate = new Date(firstCell.dataset.date);
+                                                                currentDate.setDate(currentDate.getDate() + 7); // Start from next week
+                                                                
+                                                                while (currentDate <= endDate) {
+                                                                    const weekOffset = Math.floor((currentDate - new Date(firstCell.dataset.date)) / (1000 * 60 * 60 * 24 * 7));
+                                                                    const newStartMinute = baseStartMinute + (weekOffset * 7 * 24 * 60);
+                                                                    
+                                                                    // Check if the slot is available
+                                                                    if (isTimeSlotAvailable(parseInt(firstCell.dataset.day), parseInt(firstCell.dataset.hour), calculateTotalTime(calculateFlightTime(distance)))) {
+                                                                        const newPax = Math.floor(Math.random() * (maxPax + 1));
+                                                                        let newRevenue = 0;
+                                                                        
+                                                                        // Calculate revenue for repeated flight
+                                                                        if (selectedAircraft.seatConfig.firstClass > 0) {
+                                                                            const firstClassPax = Math.floor(newPax * (selectedAircraft.seatConfig.firstClass / totalSeats));
+                                                                            newRevenue += firstClassPax * route.baseFare.firstClass * distance * route.fareMultiplier;
+                                                                        }
+                                                                        if (selectedAircraft.seatConfig.businessClass > 0) {
+                                                                            const businessPax = Math.floor(newPax * (selectedAircraft.seatConfig.businessClass / totalSeats));
+                                                                            newRevenue += businessPax * route.baseFare.business * distance * route.fareMultiplier;
+                                                                        }
+                                                                        if (selectedAircraft.seatConfig.premiumEconomy > 0) {
+                                                                            const premiumPax = Math.floor(newPax * (selectedAircraft.seatConfig.premiumEconomy / totalSeats));
+                                                                            newRevenue += premiumPax * route.baseFare.premiumEconomy * distance * route.fareMultiplier;
+                                                                        }
+                                                                        if (selectedAircraft.seatConfig.economy > 0) {
+                                                                            const economyPax = Math.floor(newPax * (selectedAircraft.seatConfig.economy / totalSeats));
+                                                                            newRevenue += economyPax * route.baseFare.economy * distance * route.fareMultiplier;
+                                                                        }
+
+                                                                        money += Math.round(newRevenue);
+                                                                        updateTrackers();
+
+                                                                        scheduledFlights.push({
+                                                                            routeIndex: selectedRouteIndex,
+                                                                            registration: selectedAircraft.registration,
+                                                                            startMinute: newStartMinute,
+                                                                            totalTime: calculateTotalTime(calculateFlightTime(distance)),
+                                                                            date: formatGameTime(newStartMinute).date,
+                                                                            completed: false,
+                                                                            passengers: newPax,
+                                                                            isReturn: false,
+                                                                            revenue: Math.round(newRevenue)
+                                                                        });
+                                                                    }
+                                                                    
+                                                                    currentDate.setDate(currentDate.getDate() + 7);
+                                                                }
+                                                            }
+                                                        }
+
+                                                        updateCalendar();
+                                                        alert(`Flight scheduled from ${startDateTime} to ${endDateTime} with ${selectedAircraft.registration}.\nPassengers: ${pax}\nRevenue: $${Math.round(revenue).toLocaleString()}`);
+                                                    }
+
+                                                    selectedCells.forEach(cell => cell.classList.remove('selected'));
+                                                    selectedCells = [];
+                                                }
+                                            });
+                                        });
+                                    });
+                                });
+                            });
+                        });
+                    });
+                });
+            });
+
+            discontinueRouteBtn.addEventListener('click', () => {
+                if (playerRoutes.length === 0) {
+                    switchContent('<h3>Discontinue Route</h3><p>You have no routes to discontinue.</p>');
+                    return;
+                }
+                switchContent(`
+                    <h3>Discontinue Route</h3>
+                    <ul id="routeList"></ul>
+                `, () => {
+                    const routeList = document.getElementById('routeList');
+                    playerRoutes.forEach((route, index) => {
+                        const li = document.createElement('li');
+                        li.textContent = `${route.from} to ${route.to}`;
+                        const discontinueBtn = document.createElement('button');
+                        discontinueBtn.textContent = 'Discontinue';
+                        discontinueBtn.className = 'discontinue-button';
+                        discontinueBtn.addEventListener('click', () => {
+                            const confirmDiscontinue = confirm(`Are you sure you want to discontinue ${route.from} to ${route.to}?`);
+                            if (confirmDiscontinue) {
+                                const refundValue = 40000000;
+                                money += refundValue;
+                                playerRoutes.splice(index, 1);
+                                scheduledFlights.filter(f => f.routeIndex !== index);
+                                scheduledFlights.forEach(f => { if (f.routeIndex > index) f.routeIndex--; });
+                                updateTrackers();
+                                discontinueRouteBtn.click();
+                                alert(`Route ${route.from} to ${route.to} discontinued. Received $${refundValue.toLocaleString()}.`);
+                            }
+                        });
+                        li.appendChild(discontinueBtn);
+                        routeList.appendChild(li);
+                    });
+                });
+            });
+        });
+    });
+
+    // Active Flights button action
+    activeFlightsBtn.addEventListener('click', () => {
+        const currentDateTime = formatGameTime(gameTime);
+        const currentMinute = gameTime;
+
+        const activeFlights = scheduledFlights.filter(f => {
+            const flightStart = f.startMinute;
+            const flightEnd = f.startMinute + f.totalTime * 60;
+            return f.date === currentDateTime.date && 
+                   currentDateTime.time >= formatGameTime(flightStart).time && 
+                   currentDateTime.time < formatGameTime(flightEnd).time && 
+                   !f.completed;
+        });
+
+        if (activeFlights.length === 0) {
+            switchContent(`
+                <h2>Active Flights</h2>
+                <p>No flights are currently active.</p>
+            `);
+        } else {
+            switchContent(`
+                <h2>Active Flights</h2>
+                <div id="activeFlightsContainer">
+                    ${activeFlights.map(f => {
+                        const route = playerRoutes[f.routeIndex];
+                        const startMinute = f.startMinute;
+                        const totalMinutes = f.totalTime * 60;
+                        const endMinute = startMinute + totalMinutes;
+                        const elapsedMinutes = currentMinute - startMinute;
+                        const oneWayMinutes = totalMinutes / 2;
+                        const progress = (elapsedMinutes / totalMinutes) * 100;
+                        const isReturning = elapsedMinutes > oneWayMinutes;
+
+                        const startDateTime = formatGameTime(startMinute);
+                        const endDateTime = formatGameTime(endMinute);
+
+                        const remainingMinutes = totalMinutes - elapsedMinutes;
+                        const remainingHours = Math.floor(remainingMinutes / 60);
+                        const remainingMins = remainingMinutes % 60;
+                        const timeLeftText = `${remainingHours}h ${remainingMins}m`;
+
+                        let status;
+                        const oneWayProgress = (elapsedMinutes / oneWayMinutes) * 100;
+                        const returnProgress = ((elapsedMinutes - oneWayMinutes) / oneWayMinutes) * 100;
+
+                        if (!isReturning) {
+                            if (oneWayProgress <= 10) status = 'Boarding';
+                            else if (oneWayProgress <= 20) status = 'Taxiing';
+                            else if (oneWayProgress <= 30) status = 'Taking Off';
+                            else if (oneWayProgress <= 90) status = 'En Route';
+                            else if (oneWayProgress <= 95) status = 'Landing';
+                            else status = 'Disembarking';
+                        } else {
+                            if (returnProgress <= 10) status = 'Boarding';
+                            else if (returnProgress <= 20) status = 'Taxiing';
+                            else if (returnProgress <= 30) status = 'Taking Off';
+                            else if (returnProgress <= 90) status = 'En Route';
+                            else if (returnProgress <= 95) status = 'Landing';
+                            else status = 'Disembarking';
+                        }
+
+                        const direction = isReturning ? `Returning to ${route.from}` : `To ${route.to}`;
+                        const originCode = isReturning ? route.to : route.from;
+                        const destinationCode = isReturning ? route.from : route.to;
+
+                        // Find the aircraft details from the fleet
+                        const aircraft = fleet.find(a => a.registration === f.registration);
+
+                        return `
+                            <div class="flight-box">
+                                <div class="flight-route">
+                                    <span class="airport-code">${originCode}</span>
+                                    <div class="flight-progress-container">
+                                        <div class="flight-progress-bar" style="width: ${progress}%"></div>
+                                        <div class="plane-indicator" style="left: ${progress}%"></div>
+                                    </div>
+                                    <span class="airport-code">${destinationCode}</span>
+                                </div>
+                                <div class="flight-details">
+                                    <p><strong>Departed:</strong> ${startDateTime.time} ${startDateTime.date}</p>
+                                    <p><strong>Arrives:</strong> ${endDateTime.time} ${endDateTime.date}</p>
+                                    <p><strong>Time Left:</strong> ${timeLeftText}</p>
+                                    <p><strong>Status:</strong> ${status} ${direction}</p>
+                                    <p><strong>Aircraft:</strong> ${aircraft ? `${aircraft.name} (${aircraft.registration})` : 'Unknown Aircraft'}</p>
+                                    <p><strong>Passengers:</strong> ${f.passengers}</p>
+                                    <p><strong>Revenue:</strong> $${f.revenue.toLocaleString()}</p>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `, () => {
+                activeFlights.forEach(flight => {
+                    const flightEnd = flight.startMinute + flight.totalTime * 60;
+                    if (currentMinute >= flightEnd) {
+                        // Calculate revenue
+                        const route = playerRoutes[flight.routeIndex];
+                        const distance = calculateDistance(
+                            hubCoordinates[route.from].lat,
+                            hubCoordinates[route.from].lon,
+                            hubCoordinates[route.to].lat,
+                            hubCoordinates[route.to].lon
+                        );
+
+                        // Get the aircraft configuration
+                        const aircraft = fleet.find(a => a.registration === flight.registration);
+                        
+                        // Calculate revenue based on passenger class distribution and fares
+                        let revenue = 0;
+                        const totalSeats = aircraft.seatConfig.firstClass + 
+                                         aircraft.seatConfig.businessClass + 
+                                         aircraft.seatConfig.premiumEconomy + 
+                                         aircraft.seatConfig.economy;
+                        
+                        // Distribute passengers across classes based on configuration
+                        if (aircraft.seatConfig.firstClass > 0) {
+                            const firstClassPax = Math.floor(flight.passengers * (aircraft.seatConfig.firstClass / totalSeats));
+                            revenue += firstClassPax * route.baseFare.firstClass * distance * route.fareMultiplier;
+                        }
+                        if (aircraft.seatConfig.businessClass > 0) {
+                            const businessPax = Math.floor(flight.passengers * (aircraft.seatConfig.businessClass / totalSeats));
+                            revenue += businessPax * route.baseFare.business * distance * route.fareMultiplier;
+                        }
+                        if (aircraft.seatConfig.premiumEconomy > 0) {
+                            const premiumPax = Math.floor(flight.passengers * (aircraft.seatConfig.premiumEconomy / totalSeats));
+                            revenue += premiumPax * route.baseFare.premiumEconomy * distance * route.fareMultiplier;
+                        }
+                        if (aircraft.seatConfig.economy > 0) {
+                            const economyPax = Math.floor(flight.passengers * (aircraft.seatConfig.economy / totalSeats));
+                            revenue += economyPax * route.baseFare.economy * distance * route.fareMultiplier;
+                        }
+
+                        // Add revenue to money
+                        money += Math.round(revenue);
+                        updateTrackers();
+
+                        flight.completed = true;
+                        if (!flight.isReturn) {
+                            const returnRouteIndex = playerRoutes.findIndex(r => 
+                                r.from === playerRoutes[flight.routeIndex].to && 
+                                r.to === playerRoutes[flight.routeIndex].from
+                            );
+                            if (returnRouteIndex !== -1) {
+                                const returnStartMinute = flight.startMinute + flight.totalTime * 60;
+                                const returnDateTime = formatGameTime(returnStartMinute);
+                                const aircraft = fleet.find(a => a.registration === flight.registration);
+                                const totalSeats = aircraft.seatConfig.firstClass + 
+                                                 aircraft.seatConfig.businessClass + 
+                                                 aircraft.seatConfig.premiumEconomy + 
+                                                 aircraft.seatConfig.economy;
+                                const newPax = Math.floor(Math.random() * (totalSeats + 1));
+
+                                // Calculate revenue for return flight
+                                const returnRoute = playerRoutes[returnRouteIndex];
+                                const distance = calculateDistance(
+                                    hubCoordinates[returnRoute.from].lat,
+                                    hubCoordinates[returnRoute.from].lon,
+                                    hubCoordinates[returnRoute.to].lat,
+                                    hubCoordinates[returnRoute.to].lon
+                                );
+
+                                // Calculate revenue based on passenger class distribution and fares
+                                let revenue = 0;
+
+                                // Distribute passengers across classes based on configuration
+                                if (aircraft.seatConfig.firstClass > 0) {
+                                    const firstClassPax = Math.floor(newPax * (aircraft.seatConfig.firstClass / totalSeats));
+                                    revenue += firstClassPax * returnRoute.baseFare.firstClass * distance * returnRoute.fareMultiplier;
+                                }
+                                if (aircraft.seatConfig.businessClass > 0) {
+                                    const businessPax = Math.floor(newPax * (aircraft.seatConfig.businessClass / totalSeats));
+                                    revenue += businessPax * returnRoute.baseFare.business * distance * returnRoute.fareMultiplier;
+                                }
+                                if (aircraft.seatConfig.premiumEconomy > 0) {
+                                    const premiumPax = Math.floor(newPax * (aircraft.seatConfig.premiumEconomy / totalSeats));
+                                    revenue += premiumPax * returnRoute.baseFare.premiumEconomy * distance * returnRoute.fareMultiplier;
+                                }
+                                if (aircraft.seatConfig.economy > 0) {
+                                    const economyPax = Math.floor(newPax * (aircraft.seatConfig.economy / totalSeats));
+                                    revenue += economyPax * returnRoute.baseFare.economy * distance * returnRoute.fareMultiplier;
+                                }
+
+                                // Add revenue immediately
+                                money += Math.round(revenue);
+                                updateTrackers();
+
+                                scheduledFlights.push({
+                                    routeIndex: returnRouteIndex,
+                                    registration: flight.registration,
+                                    startMinute: returnStartMinute,
+                                    totalTime: flight.totalTime,
+                                    date: returnDateTime.date,
+                                    completed: false,
+                                    passengers: newPax,
+                                    isReturn: true,
+                                    revenue: Math.round(revenue) // Store revenue for reference
+                                });
+                            }
+                        }
+                    }
+                });
+            });
+        }
+    });
+
+    // Finance button action
+    financeBtn.addEventListener('click', () => {
+        switchContent(`
+            <div class="finance-container">
+                <div class="finance-header">
+                    <h2>Financial Management</h2>
+                    <p class="finance-subtitle">Manage your airline's financial operations and track performance</p>
+                </div>
+
+                <div class="finance-quick-stats">
+                    <div class="quick-stat">
+                        <i class="fas fa-wallet"></i>
+                        <div class="stat-info">
+                            <span class="stat-label">Current Balance</span>
+                            <span class="stat-value">$${money.toLocaleString()}</span>
+                        </div>
+                    </div>
+                    <div class="quick-stat">
+                        <i class="fas fa-plane"></i>
+                        <div class="stat-info">
+                            <span class="stat-label">Active Routes</span>
+                            <span class="stat-value">${playerRoutes.length}</span>
+                        </div>
+                    </div>
+                    <div class="quick-stat">
+                        <i class="fas fa-calendar-check"></i>
+                        <div class="stat-info">
+                            <span class="stat-label">Scheduled Flights</span>
+                            <span class="stat-value">${scheduledFlights.length}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="finance-grid">
+                    <div class="finance-section">
+                        <div class="section-header">
+                            <i class="fas fa-hand-holding-usd"></i>
+                            <h3>Financing Options</h3>
+                        </div>
+                        <div class="finance-card">
+                            <div class="card-content">
+                                <p class="card-description">Access capital through loans or investments to expand your operations</p>
+                                <div class="finance-actions">
+                                    <button id="applyLoansBtn" class="finance-action-btn">
+                                        <i class="fas fa-file-invoice-dollar"></i>
+                                        <span>Apply for Loans</span>
+                                    </button>
+                                    <button id="requestInvestmentBtn" class="finance-action-btn">
+                                        <i class="fas fa-chart-line"></i>
+                                        <span>Request Investment</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="finance-section">
+                        <div class="section-header">
+                            <i class="fas fa-coins"></i>
+                            <h3>Revenue Management</h3>
+                        </div>
+                        <div class="finance-card">
+                            <div class="card-content">
+                                <p class="card-description">Optimize revenue streams and track financial performance</p>
+                                <div class="finance-actions">
+                                    <button id="setFaresBtn" class="finance-action-btn">
+                                        <i class="fas fa-tags"></i>
+                                        <span>Set Fares</span>
+                                    </button>
+                                    <button id="cashflowTrackBtn" class="finance-action-btn">
+                                        <i class="fas fa-money-bill-wave"></i>
+                                        <span>Revenue Analytics</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="finance-section">
+                        <div class="section-header">
+                            <i class="fas fa-folder-open"></i>
+                            <h3>Portfolio Management</h3>
+                        </div>
+                        <div class="finance-card">
+                            <div class="card-content">
+                                <p class="card-description">Manage your financial portfolio and track investments</p>
+                                <div class="finance-actions">
+                                    <button id="manageLoansBtn" class="finance-action-btn">
+                                        <i class="fas fa-file-invoice-dollar"></i>
+                                        <span>Manage Loans</span>
+                                    </button>
+                                    <button id="manageInvestmentsBtn" class="finance-action-btn">
+                                        <i class="fas fa-users"></i>
+                                        <span>Manage Investments</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="financeContent"></div>
+            </div>
+        `, () => {
+            const applyLoansBtn = document.getElementById('applyLoansBtn');
+            const requestInvestmentBtn = document.getElementById('requestInvestmentBtn');
+            const setFaresBtn = document.getElementById('setFaresBtn');
+            const cashflowTrackBtn = document.getElementById('cashflowTrackBtn');
+            const manageLoansBtn = document.getElementById('manageLoansBtn');
+            const manageInvestmentsBtn = document.getElementById('manageInvestmentsBtn');
+
+            applyLoansBtn.addEventListener('click', () => {
+                switchContent(`
+                    <h3>Apply for Loans</h3>
+                    <div class="loan-application">
+                        <div class="loan-header">
+                            <h2>Apply for Loan</h2>
+                            <p class="loan-subtitle">Select a bank and customize your loan terms</p>
+                        </div>
+
+                        <div class="bank-options">
+                            <div class="bank-option" data-bank="al-arif">
+                                <div class="bank-header">
+                                    <i class="fas fa-landmark"></i>
+                                    <h3>Al-Arif Bank</h3>
+                                </div>
+                                <div class="bank-features">
+                                    <p class="feature"><i class="fas fa-check-circle"></i> 4% Fixed Interest Rate</p>
+                                    <p class="feature"><i class="fas fa-check-circle"></i> Up to $500M Available</p>
+                                    <p class="feature"><i class="fas fa-check-circle"></i> Weekly Repayments</p>
+                                    <p class="feature"><i class="fas fa-check-circle"></i> Terms up to 10 Years</p>
+                                </div>
+                                <button class="select-bank-btn">Select Bank</button>
+                            </div>
+                        </div>
+
+                        <div class="loan-form" style="display: none;">
+                            <div class="form-group">
+                                <label for="loanAmount">Loan Amount</label>
+                                <div class="input-with-range">
+                                    <input type="range" id="loanAmountRange" min="100" max="500" step="10" value="100">
+                                    <input type="text" id="loanAmount" readonly>
+                                </div>
+                                <div class="range-limits">
+                                    <span>$100M</span>
+                                    <span>$500M</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="loanTerm">Loan Term (Years)</label>
+                                <div class="input-with-range">
+                                    <input type="range" id="loanTermRange" min="1" max="10" step="1" value="5">
+                                    <input type="text" id="loanTerm" readonly>
+                                </div>
+                                <div class="range-limits">
+                                    <span>1 Year</span>
+                                    <span>10 Years</span>
+                                </div>
+                            </div>
+
+                            <div class="loan-summary">
+                                <h3>Loan Summary</h3>
+                                <div class="summary-grid">
+                                    <div class="summary-item">
+                                        <span class="label">Weekly Payment</span>
+                                        <span class="value" id="weeklyPayment">$0</span>
+                                    </div>
+                                    <div class="summary-item">
+                                        <span class="label">Total Interest</span>
+                                        <span class="value" id="totalInterest">$0</span>
+                                    </div>
+                                    <div class="summary-item">
+                                        <span class="label">Total Repayment</span>
+                                        <span class="value" id="totalRepayment">$0</span>
+                                    </div>
+                                    <div class="summary-item">
+                                        <span class="label">Interest Rate</span>
+                                        <span class="value">4.00% p.a.</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="loan-actions">
+                                <button class="loan-btn secondary" id="cancelLoan">Cancel</button>
+                                <button class="loan-btn primary" id="applyLoan">Apply for Loan</button>
+                            </div>
+                        </div>
+                    </div>
+                `, () => {
+                    const bankOption = document.querySelector('.bank-option');
+                    const loanForm = document.querySelector('.loan-form');
+                    const loanAmountRange = document.getElementById('loanAmountRange');
+                    const loanTermRange = document.getElementById('loanTermRange');
+                    const loanAmount = document.getElementById('loanAmount');
+                    const loanTerm = document.getElementById('loanTerm');
+                    const weeklyPayment = document.getElementById('weeklyPayment');
+                    const totalInterest = document.getElementById('totalInterest');
+                    const totalRepayment = document.getElementById('totalRepayment');
+                    const cancelLoan = document.getElementById('cancelLoan');
+                    const applyLoan = document.getElementById('applyLoan');
+
+                    function formatCurrency(amount) {
+                        return new Intl.NumberFormat('en-US', {
+                            style: 'currency',
+                            currency: 'USD',
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0
+                        }).format(amount);
+                    }
+
+                    function calculateLoan() {
+                        const amount = loanAmountRange.value * 1000000;
+                        const years = parseInt(loanTermRange.value);
+                        const weeklyRate = 0.04 / 52; // 4% annual rate divided by 52 weeks
+                        const totalPayments = years * 52;
+                        
+                        // Weekly payment calculation using loan amortization formula
+                        const weeklyPaymentAmount = (amount * weeklyRate * Math.pow(1 + weeklyRate, totalPayments)) / 
+                                                  (Math.pow(1 + weeklyRate, totalPayments) - 1);
+                        
+                        const totalPaymentAmount = weeklyPaymentAmount * totalPayments;
+                        const totalInterestAmount = totalPaymentAmount - amount;
+
+                        loanAmount.value = formatCurrency(amount);
+                        loanTerm.value = `${years} Year${years > 1 ? 's' : ''}`;
+                        weeklyPayment.textContent = formatCurrency(weeklyPaymentAmount);
+                        totalInterest.textContent = formatCurrency(totalInterestAmount);
+                        totalRepayment.textContent = formatCurrency(totalPaymentAmount);
+
+                        return {
+                            amount,
+                            years,
+                            weeklyPayment: weeklyPaymentAmount,
+                            totalPayments,
+                            totalInterest: totalInterestAmount
+                        };
+                    }
+
+                    // Event Listeners
+                    bankOption.addEventListener('click', () => {
+                        bankOption.style.display = 'none';
+                        loanForm.style.display = 'block';
+                        calculateLoan();
+                    });
+
+                    loanAmountRange.addEventListener('input', calculateLoan);
+                    loanTermRange.addEventListener('input', calculateLoan);
+
+                    cancelLoan.addEventListener('click', () => {
+                        bankOption.style.display = 'block';
+                        loanForm.style.display = 'none';
+                    });
+
+                    applyLoan.addEventListener('click', () => {
+                        const loanDetails = calculateLoan();
+                        
+                        showConfirm(
+                            'Confirm Loan Application',
+                            `Are you sure you want to apply for a loan of ${formatCurrency(loanDetails.amount)} for ${loanDetails.years} years?<br><br>
+                            Weekly Payment: ${formatCurrency(loanDetails.weeklyPayment)}<br>
+                            Total Interest: ${formatCurrency(loanDetails.totalInterest)}<br>
+                            Total Payments: ${loanDetails.totalPayments}`
+                        ).then(confirmed => {
+                            if (confirmed) {
+                                // Add loan to active loans
+                                activeLoans.push({
+                                    bank: 'Al-Arif Bank',
+                                    amount: loanDetails.amount,
+                                    interestRate: 0.04,
+                                    term: loanDetails.years,
+                                    weeklyPayment: loanDetails.weeklyPayment,
+                                    remainingPayments: loanDetails.totalPayments,
+                                    remainingAmount: loanDetails.amount,
+                                    startDate: formatGameTime(gameTime).date,
+                                    completed: false
+                                });
+
+                                // Add money to player's account
+                                money += loanDetails.amount;
+                            updateTrackers();
+
+                                showAlert(
+                                    'Loan Approved',
+                                    `Your loan of ${formatCurrency(loanDetails.amount)} has been approved!<br><br>
+                                    Weekly payments of ${formatCurrency(loanDetails.weeklyPayment)} will be automatically deducted.`
+                                ).then(() => {
+                                    financeBtn.click();
+                                });
+                            }
+                    });
+                });
+
+                    // Initialize loan calculation
+                    calculateLoan();
+                });
+            });
+
+            requestInvestmentBtn.addEventListener('click', () => {
+                requestInvestment();
+            });
+
+            setFaresBtn.addEventListener('click', () => {
+                if (playerRoutes.length === 0) {
+                    switchContent(`
+                        <h3>Set Fares</h3>
+                        <p>You need to have at least one route to set fares.</p>
+                    `);
+                    return;
+                }
+
+                switchContent(`
+                    <h3>Set Fares</h3>
+                    <p>Adjust ticket prices for your routes. Base fares are calculated per nautical mile.</p>
+                    <div class="route-fares-container">
+                        ${playerRoutes.map((route, index) => {
+                            const distance = calculateDistance(
+                                hubCoordinates[route.from].lat,
+                                hubCoordinates[route.from].lon,
+                                hubCoordinates[route.to].lat,
+                                hubCoordinates[route.to].lon
+                            );
+                            
+                            return `
+                                <div class="route-fare-card">
+                                    <div class="route-fare-header">
+                                        <h4>${route.from} → ${route.to}</h4>
+                                        <p>Distance: ${Math.round(distance)} nm</p>
+                                    </div>
+                                    <div class="fare-details">
+                                        <div class="fare-row">
+                                            <span>Economy</span>
+                                            <span>$${Math.round(route.baseFare.economy * distance * route.fareMultiplier)}</span>
+                                        </div>
+                                        <div class="fare-row">
+                                            <span>Premium Economy</span>
+                                            <span>$${Math.round(route.baseFare.premiumEconomy * distance * route.fareMultiplier)}</span>
+                                        </div>
+                                        <div class="fare-row">
+                                            <span>Business</span>
+                                            <span>$${Math.round(route.baseFare.business * distance * route.fareMultiplier)}</span>
+                                        </div>
+                                        <div class="fare-row">
+                                            <span>First Class</span>
+                                            <span>$${Math.round(route.baseFare.firstClass * distance * route.fareMultiplier)}</span>
+                                        </div>
+                                    </div>
+                                    <div class="fare-multiplier">
+                                        <label>Fare Multiplier:</label>
+                                        <select id="fareMultiplier-${index}" class="fare-select">
+                                            <option value="0.8" ${route.fareMultiplier === 0.8 ? 'selected' : ''}>Low (80%)</option>
+                                            <option value="1.0" ${route.fareMultiplier === 1.0 ? 'selected' : ''}>Standard (100%)</option>
+                                            <option value="1.2" ${route.fareMultiplier === 1.2 ? 'selected' : ''}>High (120%)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `, () => {
+                    // Add event listeners for fare multiplier changes
+                    playerRoutes.forEach((route, index) => {
+                        const select = document.getElementById(`fareMultiplier-${index}`);
+                        select.addEventListener('change', () => {
+                            route.fareMultiplier = parseFloat(select.value);
+                            setFaresBtn.click(); // Refresh the display
+                        });
+                    });
+                });
+            });
+
+            cashflowTrackBtn.addEventListener('click', () => {
+                // Calculate revenue statistics
+                const currentDateTime = formatGameTime(gameTime);
+                const currentMinute = gameTime;
+                const weekInMinutes = 7 * 24 * 60;
+                const dayInMinutes = 24 * 60;
+
+                // Get all flights for different time periods
+                const weekStart = currentMinute - (currentMinute % weekInMinutes);
+                const dayStart = currentMinute - (currentMinute % dayInMinutes);
+
+                const todayFlights = scheduledFlights.filter(f => {
+                    const flightStart = f.startMinute;
+                    return flightStart >= dayStart && flightStart < dayStart + dayInMinutes;
+                });
+
+                const weekFlights = scheduledFlights.filter(f => {
+                    const flightStart = f.startMinute;
+                    return flightStart >= weekStart && flightStart < weekStart + weekInMinutes;
+                });
+
+                // Calculate revenue statistics
+                const todayRevenue = todayFlights.reduce((sum, f) => sum + (f.revenue || 0), 0);
+                const weekRevenue = weekFlights.reduce((sum, f) => sum + (f.revenue || 0), 0);
+                const avgRevenuePerFlight = weekFlights.length > 0 ? weekRevenue / weekFlights.length : 0;
+
+                // Calculate revenue by cabin class
+                const cabinRevenue = weekFlights.reduce((acc, flight) => {
+                    const aircraft = fleet.find(a => a.registration === flight.registration);
+                    const totalSeats = aircraft.seatConfig.firstClass + 
+                                     aircraft.seatConfig.businessClass + 
+                                     aircraft.seatConfig.premiumEconomy + 
+                                     aircraft.seatConfig.economy;
+                    
+                    if (aircraft.seatConfig.firstClass > 0) {
+                        const firstClassPax = Math.floor(flight.passengers * (aircraft.seatConfig.firstClass / totalSeats));
+                        acc.firstClass += firstClassPax * (flight.revenue / flight.passengers);
+                    }
+                    if (aircraft.seatConfig.businessClass > 0) {
+                        const businessPax = Math.floor(flight.passengers * (aircraft.seatConfig.businessClass / totalSeats));
+                        acc.business += businessPax * (flight.revenue / flight.passengers);
+                    }
+                    if (aircraft.seatConfig.premiumEconomy > 0) {
+                        const premiumPax = Math.floor(flight.passengers * (aircraft.seatConfig.premiumEconomy / totalSeats));
+                        acc.premiumEconomy += premiumPax * (flight.revenue / flight.passengers);
+                    }
+                    if (aircraft.seatConfig.economy > 0) {
+                        const economyPax = Math.floor(flight.passengers * (aircraft.seatConfig.economy / totalSeats));
+                        acc.economy += economyPax * (flight.revenue / flight.passengers);
+                    }
+                    return acc;
+                }, { firstClass: 0, business: 0, premiumEconomy: 0, economy: 0 });
+
+                // Calculate top performing routes
+                const routePerformance = playerRoutes.map(route => {
+                    const routeFlights = weekFlights.filter(f => f.routeIndex === playerRoutes.indexOf(route));
+                    const routeRevenue = routeFlights.reduce((sum, f) => sum + (f.revenue || 0), 0);
+                    const avgLoadFactor = routeFlights.length > 0 ? 
+                        routeFlights.reduce((sum, f) => sum + (f.passengers / fleet.find(a => a.registration === f.registration).seats), 0) / routeFlights.length * 100 : 0;
+                    
+                    return {
+                        route: `${route.from} → ${route.to}`,
+                        revenue: routeRevenue,
+                        flights: routeFlights.length,
+                        avgLoadFactor
+                    };
+                }).sort((a, b) => b.revenue - a.revenue);
+
+                switchContent(`
+                    <div class="cashflow-container">
+                        <h3>Revenue Overview</h3>
+                        
+                        <div class="revenue-summary">
+                            <div class="revenue-card highlight">
+                                <h4>Today's Revenue</h4>
+                                <p class="amount">$${todayRevenue.toLocaleString()}</p>
+                                <p class="sub-text">${todayFlights.length} flights</p>
+                            </div>
+                            <div class="revenue-card">
+                                <h4>Weekly Revenue</h4>
+                                <p class="amount">$${weekRevenue.toLocaleString()}</p>
+                                <p class="sub-text">${weekFlights.length} flights</p>
+                            </div>
+                            <div class="revenue-card">
+                                <h4>Average Per Flight</h4>
+                                <p class="amount">$${Math.round(avgRevenuePerFlight).toLocaleString()}</p>
+                                <p class="sub-text">This week</p>
+                            </div>
+                        </div>
+
+                        <div class="revenue-details">
+                            <div class="revenue-section">
+                                <h4>Revenue by Cabin Class</h4>
+                                <div class="cabin-revenue">
+                                    ${Object.entries(cabinRevenue).map(([cabin, revenue]) => `
+                                        <div class="cabin-row">
+                                            <span class="cabin-name">${cabin.replace(/([A-Z])/g, ' $1').trim()}</span>
+                                            <div class="cabin-bar-container">
+                                                <div class="cabin-bar" style="width: ${(revenue / weekRevenue * 100)}%"></div>
+                                            </div>
+                                            <span class="cabin-amount">$${Math.round(revenue).toLocaleString()}</span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+
+                            <div class="revenue-section">
+                                <h4>Top Performing Routes</h4>
+                                <div class="route-performance">
+                                    ${routePerformance.slice(0, 5).map(route => `
+                                        <div class="route-row">
+                                            <div class="route-info">
+                                                <span class="route-name">${route.route}</span>
+                                                <span class="route-stats">
+                                                    ${route.flights} flights | ${Math.round(route.avgLoadFactor)}% load factor
+                                                </span>
+                                            </div>
+                                            <div class="route-revenue">
+                                                <span class="amount">$${route.revenue.toLocaleString()}</span>
+                                                <span class="percentage">${Math.round(route.revenue / weekRevenue * 100)}% of total</span>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `);
+            });
+
+            manageLoansBtn.addEventListener('click', () => {
+                if (activeLoans.length === 0) {
+                switchContent(`
+                    <h3>Manage Loans</h3>
+                        <p>You have no active loans.</p>
+                `);
+                    return;
+                }
+
+                switchContent(`
+                    <h3>Manage Loans</h3>
+                    <div class="active-loans-container">
+                        ${activeLoans.map(loan => `
+                            <div class="loan-card ${loan.completed ? 'completed' : ''}">
+                                <div class="loan-header">
+                                    <h4>${loan.bank}</h4>
+                                    <span class="loan-status ${loan.completed ? 'completed' : 'active'}">
+                                        ${loan.completed ? 'Completed' : 'Active'}
+                                    </span>
+                                </div>
+                                <div class="loan-details">
+                                    <div class="detail-row">
+                                        <span>Original Amount:</span>
+                                        <span>$${loan.amount.toLocaleString()}</span>
+                                    </div>
+                                    <div class="detail-row">
+                                        <span>Remaining Amount:</span>
+                                        <span>$${Math.round(loan.remainingAmount).toLocaleString()}</span>
+                                    </div>
+                                    <div class="detail-row">
+                                        <span>Weekly Payment:</span>
+                                        <span>$${Math.round(loan.weeklyPayment).toLocaleString()}</span>
+                                    </div>
+                                    <div class="detail-row">
+                                        <span>Remaining Payments:</span>
+                                        <span>${loan.remainingPayments}</span>
+                                    </div>
+                                    <div class="detail-row">
+                                        <span>Start Date:</span>
+                                        <span>${loan.startDate}</span>
+                                    </div>
+                                </div>
+                                <div class="loan-progress">
+                                    <div class="progress-bar">
+                                        <div class="progress" style="width: ${((loan.term * 52 - loan.remainingPayments) / (loan.term * 52)) * 100}%"></div>
+                                    </div>
+                                    <span class="progress-text">
+                                        ${Math.round(((loan.term * 52 - loan.remainingPayments) / (loan.term * 52)) * 100)}% Repaid
+                                    </span>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `);
+            });
+
+            manageInvestmentsBtn.addEventListener('click', () => {
+                showInvestmentManagement();
+            });
+
+            // Add weekly dividend calculation to the game time update
+            const oldUpdateTrackers = updateTrackers;
+            updateTrackers = function() {
+                oldUpdateTrackers();
+                
+                // Calculate weekly dividends every 7 game days
+                const gameDate = new Date(formatGameTime(gameTime).date);
+                if (gameDate.getDay() === 0) { // Sunday
+                    const weeklyRevenue = calculateWeeklyRevenue();
+                    calculateWeeklyDividend(weeklyRevenue);
+                }
+            };
+
+            function calculateWeeklyRevenue() {
+                const now = gameTime;
+                const weekAgo = now - (7 * 24 * 60); // 7 days in minutes
+                
+                return completedFlights
+                    .filter(flight => flight.completionTime > weekAgo && flight.completionTime <= now)
+                    .reduce((total, flight) => total + flight.revenue, 0);
+            }
+        });
+    });
+
+    // HQ button action
+    hqBtn.addEventListener('click', () => {
+        switchContent(`
+            <h2>Headquarters</h2>
+            <p>Manage your HQ operations here.</p>
+        `);
+    });
+
+    // Investment System Variables
+    let hasInvestor = false;
+    let investorEquity = 0;
+    let weeklyInvestorPayment = 0;
+    let totalInvestorPayments = 0;
+
+    // Investment System Functions
+    function requestInvestment() {
+        if (hasInvestor) {
+            showAlert(
+                'Investment Request Denied',
+                'You already have an active investor (787 Investments). Only one investor is allowed at a time.'
+            );
+            return;
+        }
+
+        switchContent(`
+            <h3>Request Investment from 787 Investments</h3>
+            <div class="investment-container">
+                <div class="investor-profile">
+                    <i class="fas fa-building"></i>
+                    <h4>787 Investments</h4>
+                    <p>A leading aviation investment firm specializing in airline growth</p>
+                </div>
+                
+                <div class="investment-options">
+                    <div class="investment-option">
+                        <h4>Growth Investment Package</h4>
+                        <div class="investment-details">
+                            <p><i class="fas fa-money-bill-wave"></i> Investment Amount: $500M</p>
+                            <p><i class="fas fa-chart-pie"></i> Equity Share: 10%</p>
+                            <p><i class="fas fa-info-circle"></i> Weekly dividend payment based on revenue</p>
+                        </div>
+                        <button class="investment-button" onclick="acceptInvestment(500000000, 0.10)">Accept $500M Investment</button>
+                    </div>
+                    
+                    <div class="investment-option">
+                        <h4>Expansion Investment Package</h4>
+                        <div class="investment-details">
+                            <p><i class="fas fa-money-bill-wave"></i> Investment Amount: $1B</p>
+                            <p><i class="fas fa-chart-pie"></i> Equity Share: 10%</p>
+                            <p><i class="fas fa-info-circle"></i> Weekly dividend payment based on revenue</p>
+                        </div>
+                        <button class="investment-button" onclick="acceptInvestment(1000000000, 0.10)">Accept $1B Investment</button>
+                    </div>
+                    
+                    <div class="investment-option">
+                        <h4>Enterprise Investment Package</h4>
+                        <div class="investment-details">
+                            <p><i class="fas fa-money-bill-wave"></i> Investment Amount: $2B</p>
+                            <p><i class="fas fa-chart-pie"></i> Equity Share: 10%</p>
+                            <p><i class="fas fa-info-circle"></i> Weekly dividend payment based on revenue</p>
+                        </div>
+                        <button class="investment-button" onclick="acceptInvestment(2000000000, 0.10)">Accept $2B Investment</button>
+                    </div>
+                </div>
+            </div>
+        `);
+    }
+
+    function acceptInvestment(amount, equity) {
+        showConfirm(
+            'Confirm Investment',
+            `Are you sure you want to accept an investment of $${(amount/1000000).toFixed(0)}M for ${(equity*100)}% equity?<br><br>
+            This means ${(equity*100)}% of your weekly revenue will be paid as dividends to 787 Investments.`
+        ).then(confirmed => {
+            if (confirmed) {
+                hasInvestor = true;
+                investorEquity = equity;
+                money += amount;
+                updateTrackers();
+                
+                showAlert(
+                    'Investment Accepted',
+                    `You have successfully received $${(amount/1000000).toFixed(0)}M from 787 Investments.<br><br>
+                    ${(equity*100)}% of your weekly revenue will be paid as dividends.`
+                ).then(() => {
+                    financeBtn.click();
+                });
+            }
+        });
+    }
+
+    function calculateWeeklyDividend(weeklyRevenue) {
+        if (hasInvestor) {
+            const dividend = weeklyRevenue * investorEquity;
+            weeklyInvestorPayment = dividend;
+            totalInvestorPayments += dividend;
+            money -= dividend;
+            updateTrackers();
+            return dividend;
+        }
+        return 0;
+    }
+
+    function showInvestmentManagement() {
+        if (!hasInvestor) {
+            switchContent(`
+                <h3>Investment Management</h3>
+                <div class="no-investor-message">
+                    <i class="fas fa-info-circle"></i>
+                    <p>You currently have no active investors.</p>
+                    <button class="finance-action-btn" onclick="requestInvestment()">
+                        <i class="fas fa-hand-holding-usd"></i>
+                        Request Investment
+                    </button>
+                </div>
+            `);
+            return;
+        }
+
+        switchContent(`
+            <h3>Investment Management</h3>
+            <div class="investment-management-container">
+                <div class="investor-summary">
+                    <div class="investor-card">
+                        <div class="investor-header">
+                            <i class="fas fa-building"></i>
+                            <h4>787 Investments</h4>
+                            <span class="active-badge">Active Investor</span>
+                        </div>
+                        <div class="investor-stats">
+                            <div class="stat-row">
+                                <span>Equity Share:</span>
+                                <span>${(investorEquity*100)}%</span>
+                            </div>
+                            <div class="stat-row">
+                                <span>Last Week's Dividend:</span>
+                                <span>$${weeklyInvestorPayment.toLocaleString()}</span>
+                            </div>
+                            <div class="stat-row">
+                                <span>Total Dividends Paid:</span>
+                                <span>$${totalInvestorPayments.toLocaleString()}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `);
+    }
+
+    // Investment System Variables
+    let activeInvestments = [];
+
+    function requestInvestment() {
+        switchContent(`
+            <div class="investment-application">
+                <div class="loan-header">
+                    <h2>Request Investment</h2>
+                    <p class="loan-subtitle">Partner with 787 Investments to fuel your airline's growth</p>
+                </div>
+
+                <div class="bank-option active">
+                    <div class="bank-header">
+                        <i class="fas fa-building"></i>
+                        <h3>787 Investments</h3>
+                        <span class="premium-badge">Premium Partner</span>
+                    </div>
+                    <div class="bank-features">
+                        <p class="feature"><i class="fas fa-check-circle"></i> Revenue-Based Repayment</p>
+                        <p class="feature"><i class="fas fa-check-circle"></i> Investment Range: $500M - $2B</p>
+                        <p class="feature"><i class="fas fa-check-circle"></i> Weekly Payment: 10% of Revenue</p>
+                        <p class="feature"><i class="fas fa-check-circle"></i> Total Return: 120% of Investment</p>
+                    </div>
+                </div>
+
+                <div class="loan-form">
+                    <div class="form-group">
+                        <label for="investmentAmount">Investment Amount</label>
+                        <div class="input-with-range">
+                            <input type="range" id="investmentAmountRange" min="500" max="2000" value="500" step="100">
+                            <input type="text" id="investmentAmount" readonly>
+                        </div>
+                        <div class="range-limits">
+                            <span>$500M</span>
+                            <span>$2B</span>
+                        </div>
+                    </div>
+
+                    <div class="investment-summary">
+                        <h3>Investment Summary</h3>
+                        <div class="summary-grid">
+                            <div class="summary-item">
+                                <span class="label">Investment Amount</span>
+                                <span class="value" id="summaryAmount">$500M</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="label">Weekly Payment</span>
+                                <span class="value">10% of Revenue</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="label">Total Return Target</span>
+                                <span class="value" id="summaryReturn">$600M</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="label">Return Rate</span>
+                                <span class="value">120%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="investment-terms">
+                        <h4><i class="fas fa-info-circle"></i> Investment Terms</h4>
+                        <ul>
+                            <li>Weekly payments are automatically deducted from your revenue</li>
+                            <li>Investment is considered repaid when total return target is met</li>
+                            <li>No fixed term - repayment speed depends on your revenue</li>
+                            <li>Multiple investments can be active simultaneously</li>
+                        </ul>
+                    </div>
+
+                    <div class="loan-actions">
+                        <button class="loan-btn secondary" id="cancelInvestment">Cancel</button>
+                        <button class="loan-btn primary" id="confirmInvestment">Request Investment</button>
+                    </div>
+                </div>
+            </div>
+        `, () => {
+            const amountRange = document.getElementById('investmentAmountRange');
+            const amountDisplay = document.getElementById('investmentAmount');
+            const summaryAmount = document.getElementById('summaryAmount');
+            const summaryReturn = document.getElementById('summaryReturn');
+            const confirmBtn = document.getElementById('confirmInvestment');
+            const cancelBtn = document.getElementById('cancelInvestment');
+
+            function updateInvestmentSummary() {
+                const amount = parseInt(amountRange.value);
+                const returnAmount = amount * 1.2;
+                
+                amountDisplay.value = `$${amount}M`;
+                summaryAmount.textContent = `$${amount}M`;
+                summaryReturn.textContent = `$${returnAmount}M`;
+            }
+
+            amountRange.addEventListener('input', updateInvestmentSummary);
+            
+            confirmBtn.addEventListener('click', () => {
+                const amount = parseInt(amountRange.value) * 1000000;
+                const targetReturn = amount * 1.2;
+
+                showConfirm(
+                    'Confirm Investment Request',
+                    `Are you sure you want to request an investment of $${(amount/1000000)}M?<br><br>
+                    Terms:<br>
+                    - Weekly payment: 10% of revenue<br>
+                    - Total return target: $${(targetReturn/1000000)}M<br>
+                    - Payments continue until return target is met`
+                ).then(confirmed => {
+                    if (confirmed) {
+                        activeInvestments.push({
+                            investor: '787 Investments',
+                            amount: amount,
+                            targetReturn: targetReturn,
+                            remainingAmount: targetReturn,
+                            totalPaid: 0,
+                            weeklyRate: 0.10,
+                            startDate: formatGameTime(gameTime).date,
+                            completed: false
+                        });
+
+                        money += amount;
+                        updateTrackers();
+
+                        showAlert(
+                            'Investment Approved',
+                            `Your investment of $${(amount/1000000)}M has been approved!<br><br>
+                            10% of your weekly revenue will be automatically collected until $${(targetReturn/1000000)}M is repaid.`
+                        ).then(() => {
+                            financeBtn.click();
+                        });
+                    }
+                });
+            });
+
+            cancelBtn.addEventListener('click', () => {
+                financeBtn.click();
+            });
+
+            // Initialize summary
+            updateInvestmentSummary();
+        });
+    }
+
+    function showInvestmentManagement() {
+        if (activeInvestments.length === 0) {
+            switchContent(`
+                <h3>Manage Investments</h3>
+                <p>You have no active investments.</p>
+            `);
+            return;
+        }
+
+        switchContent(`
+            <h3>Manage Investments</h3>
+            <div class="active-loans-container">
+                ${activeInvestments.map(investment => `
+                    <div class="loan-card ${investment.completed ? 'completed' : ''}">
+                        <div class="loan-header">
+                            <h4>${investment.investor}</h4>
+                            <span class="loan-status ${investment.completed ? 'completed' : 'active'}">
+                                ${investment.completed ? 'Completed' : 'Active'}
+                            </span>
+                        </div>
+                        <div class="loan-details">
+                            <div class="detail-row">
+                                <span>Investment Amount:</span>
+                                <span>$${investment.amount.toLocaleString()}</span>
+                            </div>
+                            <div class="detail-row">
+                                <span>Target Return:</span>
+                                <span>$${investment.targetReturn.toLocaleString()}</span>
+                            </div>
+                            <div class="detail-row">
+                                <span>Remaining to Pay:</span>
+                                <span>$${Math.round(investment.remainingAmount).toLocaleString()}</span>
+                            </div>
+                            <div class="detail-row">
+                                <span>Total Paid:</span>
+                                <span>$${Math.round(investment.totalPaid).toLocaleString()}</span>
+                            </div>
+                            <div class="detail-row">
+                                <span>Weekly Rate:</span>
+                                <span>${(investment.weeklyRate * 100)}% of Revenue</span>
+                            </div>
+                            <div class="detail-row">
+                                <span>Start Date:</span>
+                                <span>${investment.startDate}</span>
+                            </div>
+                        </div>
+                        <div class="loan-progress">
+                            <div class="progress-bar">
+                                <div class="progress" style="width: ${((investment.totalPaid / investment.targetReturn) * 100)}%"></div>
+                            </div>
+                            <span class="progress-text">
+                                ${Math.round((investment.totalPaid / investment.targetReturn) * 100)}% Repaid
+                            </span>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `);
+    }
+
+    // Update the weekly payment calculation
+    const oldUpdateTrackers = updateTrackers;
+    updateTrackers = function() {
+        oldUpdateTrackers();
+        
+        // Calculate weekly payments every 7 game days
+        const gameDate = new Date(formatGameTime(gameTime).date);
+        if (gameDate.getDay() === 0) { // Sunday
+            const weeklyRevenue = calculateWeeklyRevenue();
+            processInvestmentPayments(weeklyRevenue);
+        }
+    };
+
+    function calculateWeeklyRevenue() {
+        const now = gameTime;
+        const weekAgo = now - (7 * 24 * 60); // 7 days in minutes
+        
+        return completedFlights
+            .filter(flight => flight.completionTime > weekAgo && flight.completionTime <= now)
+            .reduce((total, flight) => total + flight.revenue, 0);
+    }
+
+    function processInvestmentPayments(weeklyRevenue) {
+        activeInvestments.forEach(investment => {
+            if (!investment.completed) {
+                const payment = weeklyRevenue * investment.weeklyRate;
+                investment.totalPaid += payment;
+                investment.remainingAmount -= payment;
+                money -= payment;
+
+                if (investment.totalPaid >= investment.targetReturn) {
+                    investment.completed = true;
+                    investment.remainingAmount = 0;
+                    showAlert(
+                        'Investment Repaid',
+                        `You have fully repaid your investment to ${investment.investor}!`
+                    );
+                }
+            }
+        });
+        updateTrackers();
+    }
+
+    // Loan Application functionality
+    function initializeLoanApplication() {
+        // Get loan application elements
+        const loanAmountRange = document.getElementById('loanAmountRange');
+        const loanAmount = document.getElementById('loanAmount');
+        const loanTermRange = document.getElementById('loanTermRange');
+        const loanTerm = document.getElementById('loanTerm');
+        const weeklyPayment = document.getElementById('weeklyPayment');
+        const totalInterest = document.getElementById('totalInterest');
+        const totalRepayment = document.getElementById('totalRepayment');
+        const applyLoanBtn = document.getElementById('applyLoan');
+        const cancelLoanBtn = document.getElementById('cancelLoan');
+        
+        // Get bank options and add click handlers
+        const bankOptions = document.querySelectorAll('.bank-option');
+        let selectedBank = null;
+        
+        bankOptions.forEach(bank => {
+            bank.addEventListener('click', function() {
+                // Remove active class from all banks
+                bankOptions.forEach(b => b.classList.remove('active'));
+                // Add active class to selected bank
+                this.classList.add('active');
+                
+                // Set the selected bank
+                selectedBank = this.getAttribute('data-bank');
+                
+                // Update loan amount range based on selected bank
+                if (selectedBank === 'hong-kong') {
+                    loanAmountRange.min = 100000000;  // $100M
+                    loanAmountRange.max = 1000000000; // $1B
+                    loanAmountRange.value = 100000000;
+                } else {
+                    // Default to Al-Arif Bank limits
+                    loanAmountRange.min = 100000000;  // $100M
+                    loanAmountRange.max = 500000000;  // $500M
+                    loanAmountRange.value = 100000000;
+                }
+                
+                // Update term range based on selected bank
+                if (selectedBank === 'hong-kong') {
+                    loanTermRange.max = 15; // 15 years for Bank of Hong Kong
+                    loanTermRange.value = 10;
+            } else {
+                    loanTermRange.max = 10; // 10 years for Al-Arif Bank
+                    loanTermRange.value = 5;
+                }
+                
+                // Force update display values and summary
+                loanAmount.value = formatMoney(loanAmountRange.value);
+                loanTerm.value = `${loanTermRange.value} Years`;
+                updateLoanSummary();
+            });
+        });
+        
+        // Select first bank by default
+        if (bankOptions.length > 0) {
+            bankOptions[0].click();
+        }
+        
+        // Add event listeners for range inputs
+        loanAmountRange.addEventListener('input', function() {
+            loanAmount.value = formatMoney(this.value);
+            updateLoanSummary();
+        });
+        
+        loanTermRange.addEventListener('input', function() {
+            loanTerm.value = `${this.value} Year${this.value > 1 ? 's' : ''}`;
+            updateLoanSummary();
+        });
+
+        function updateLoanSummary() {
+            const amount = parseInt(loanAmountRange.value);
+            const termYears = parseInt(loanTermRange.value);
+            // Interest rate based on selected bank
+            const interestRate = selectedBank === 'hong-kong' ? 0.05 : 0.04; // 5% for HK, 4% for Al-Arif
+            
+            // Calculate weekly payment
+            const totalWeeks = termYears * 52;
+            const weeklyInterestRate = interestRate / 52;
+            const weeklyPaymentAmount = amount * (weeklyInterestRate * Math.pow(1 + weeklyInterestRate, totalWeeks)) / 
+                                      (Math.pow(1 + weeklyInterestRate, totalWeeks) - 1);
+            
+            const totalRepaymentAmount = weeklyPaymentAmount * totalWeeks;
+            const totalInterestAmount = totalRepaymentAmount - amount;
+            
+            // Update summary display
+            weeklyPayment.textContent = formatMoney(weeklyPaymentAmount);
+            totalInterest.textContent = formatMoney(totalInterestAmount);
+            totalRepayment.textContent = formatMoney(totalRepaymentAmount);
+        }
+        
+        // Initialize loan summary
+        updateLoanSummary();
+        
+        // Apply loan button
+        applyLoanBtn.addEventListener('click', function() {
+            if (!selectedBank) {
+                showAlert('Bank Selection Required', 'Please select a bank before applying for a loan.');
+                return;
+            }
+            
+            // Get loan details
+            const loanDetails = {
+                bank: selectedBank === 'hong-kong' ? 'Bank of Hong Kong' : 'Al-Arif Bank',
+                amount: loanAmountRange.value,
+                term: loanTermRange.value,
+                weeklyPayment: weeklyPayment.textContent,
+                totalInterest: totalInterest.textContent,
+                totalRepayment: totalRepayment.textContent,
+                interestRate: selectedBank === 'hong-kong' ? '5%' : '4%'
+            };
+            
+            // Here you would add code to process the loan application
+            // For now, just show a confirmation popup
+            showConfirm(
+                'Confirm Loan Application',
+                `
+                <div class="loan-confirmation">
+                    <p>You are about to apply for a loan with the following details:</p>
+                    <ul>
+                        <li><strong>Bank:</strong> ${loanDetails.bank}</li>
+                        <li><strong>Amount:</strong> ${formatMoney(loanDetails.amount)}</li>
+                        <li><strong>Term:</strong> ${loanDetails.term} Years</li>
+                        <li><strong>Interest Rate:</strong> ${loanDetails.interestRate}</li>
+                        <li><strong>Weekly Payment:</strong> ${loanDetails.weeklyPayment}</li>
+                        <li><strong>Total Interest:</strong> ${loanDetails.totalInterest}</li>
+                        <li><strong>Total Repayment:</strong> ${loanDetails.totalRepayment}</li>
+                    </ul>
+                    <p>Do you want to proceed with this application?</p>
+                    </div>
+                `
+            ).then(result => {
+                if (result) {
+                    // Process the loan application
+                    showAlert('Loan Application Submitted', 'Your loan application has been submitted successfully. You will be notified once it is approved.');
+                    
+                    // Update game state with the loan
+                    const gameState = JSON.parse(localStorage.getItem('gameState')) || {};
+                    gameState.loans = gameState.loans || [];
+                    gameState.loans.push({
+                        bank: loanDetails.bank,
+                        amount: parseInt(loanDetails.amount),
+                        term: parseInt(loanDetails.term),
+                        weeklyPayment: parseMoney(loanDetails.weeklyPayment),
+                        remainingPayments: parseInt(loanDetails.term) * 52,
+                        interestRate: selectedBank === 'hong-kong' ? 0.05 : 0.04,
+                        dateApproved: new Date().toISOString()
+                    });
+                    gameState.money = (gameState.money || 0) + parseInt(loanDetails.amount);
+                    localStorage.setItem('gameState', JSON.stringify(gameState));
+                    
+                    // Hide loan application
+                    document.getElementById('loanApplication').style.display = 'none';
+                    
+                    // Update money display
+                    updateMoneyDisplay(gameState.money);
+                }
+            });
+        });
+        
+        // Cancel loan button
+        cancelLoanBtn.addEventListener('click', function() {
+            document.getElementById('loanApplication').style.display = 'none';
+        });
+    }
+
+    // Initialize loan application when finance tab is opened
+    document.querySelector('#financeBtn').addEventListener('click', () => {
+        // Hide welcome section and show loan application
+        document.querySelector('.welcome-section').style.display = 'none';
+        document.querySelector('#loanApplication').style.display = 'block';
+        setTimeout(initializeLoanApplication, 100);
+    });
+
+    // ... existing code ...
+    function initializeDashboard() {
+        updateDashboardMetrics();
+        // Update metrics every minute
+        setInterval(updateDashboardMetrics, 60000);
+    }
+
+    function updateDashboardMetrics() {
+        // These would normally be fetched from your backend
+        const metrics = {
+            profit: {
+                value: calculateDailyProfit(),
+                trend: calculateProfitTrend()
+            },
+            revenue: calculateDailyRevenue(),
+            expenses: {
+                total: calculateDailyExpenses(),
+                fuel: calculateFuelCosts(),
+                staff: calculateStaffCosts()
+            },
+            flights: {
+                total: getTotalFlightsToday(),
+                onTime: getOnTimeFlights(),
+                delayed: getDelayedFlights()
+            },
+            passengers: {
+                total: getTotalPassengersToday(),
+                loadFactor: calculateLoadFactor()
+            },
+            maintenance: {
+                status: getMaintenanceStatus(),
+                dueToday: getMaintenanceDueToday(),
+                inProgress: getMaintenanceInProgress()
+            }
+        };
+
+        // Update DOM elements with new values
+        document.getElementById('todayProfit').textContent = formatMoney(metrics.profit.value);
+        document.getElementById('todayRevenue').textContent = formatMoney(metrics.revenue);
+        document.getElementById('todayExpenses').textContent = formatMoney(metrics.expenses.total);
+        document.getElementById('todayFlights').textContent = metrics.flights.total;
+        document.getElementById('todayPassengers').textContent = metrics.passengers.total.toLocaleString();
+        document.getElementById('maintenanceStatus').textContent = metrics.maintenance.status;
+
+        // Update detailed stats
+        const expenseBreakdown = document.querySelector('.expense-breakdown');
+        expenseBreakdown.innerHTML = `
+            <span>Fuel: ${formatMoney(metrics.expenses.fuel)}</span>
+            <span>Staff: ${formatMoney(metrics.expenses.staff)}</span>
+        `;
+
+        const flightStats = document.querySelector('.flight-stats');
+        flightStats.innerHTML = `
+            <span>On Time: ${metrics.flights.onTime}</span>
+            <span>Delayed: ${metrics.flights.delayed}</span>
+        `;
+
+        const maintenanceStats = document.querySelector('.maintenance-stats');
+        maintenanceStats.innerHTML = `
+            <span>Due Today: ${metrics.maintenance.dueToday}</span>
+            <span>In Progress: ${metrics.maintenance.inProgress}</span>
+        `;
+
+        // Update profit trend
+        const profitTrend = document.querySelector('.metric-trend');
+        const trendValue = metrics.profit.trend;
+        profitTrend.className = `metric-trend ${trendValue >= 0 ? 'positive' : 'negative'}`;
+        profitTrend.innerHTML = `
+            <i class="fas fa-arrow-${trendValue >= 0 ? 'up' : 'down'}"></i>
+            <span>${Math.abs(trendValue)}% vs yesterday</span>
+        `;
+    }
+
+    // Helper functions to calculate metrics
+    function calculateDailyProfit() {
+        // Implementation depends on your game logic
+        return 0; // Placeholder
+    }
+
+    function calculateProfitTrend() {
+        // Implementation depends on your game logic
+        return 0; // Placeholder
+    }
+
+    function calculateDailyRevenue() {
+        // Implementation depends on your game logic
+        return 0; // Placeholder
+    }
+
+    function calculateDailyExpenses() {
+        // Implementation depends on your game logic
+        return 0; // Placeholder
+    }
+
+    function calculateFuelCosts() {
+        // Implementation depends on your game logic
+        return 0; // Placeholder
+    }
+
+    function calculateStaffCosts() {
+        // Implementation depends on your game logic
+        return 0; // Placeholder
+    }
+
+    function getTotalFlightsToday() {
+        // Implementation depends on your game logic
+        return 0; // Placeholder
+    }
+
+    function getOnTimeFlights() {
+        // Implementation depends on your game logic
+        return 0; // Placeholder
+    }
+
+    function getDelayedFlights() {
+        // Implementation depends on your game logic
+        return 0; // Placeholder
+    }
+
+    function getTotalPassengersToday() {
+        // Implementation depends on your game logic
+        return 0; // Placeholder
+    }
+
+    function calculateLoadFactor() {
+        // Implementation depends on your game logic
+        return 0; // Placeholder
+    }
+
+    function getMaintenanceStatus() {
+        // Implementation depends on your game logic
+        return 'All Clear'; // Placeholder
+    }
+
+    function getMaintenanceDueToday() {
+        // Implementation depends on your game logic
+        return 0; // Placeholder
+    }
+
+    function getMaintenanceInProgress() {
+        // Implementation depends on your game logic
+        return 0; // Placeholder
+    }
+
+    // Call initializeDashboard when the page loads
+    document.addEventListener('DOMContentLoaded', initializeDashboard);
+});
