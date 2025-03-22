@@ -3,6 +3,7 @@ import { useGameContext } from "@/contexts/GameContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/utils/gameLogic";
+import { BarChart3, DollarSign } from "lucide-react";
 
 interface FinancialSummaryProps {
   detailed?: boolean;
@@ -71,21 +72,24 @@ export default function FinancialSummary({ detailed = false }: FinancialSummaryP
   const expenseBreakdown = getExpenseBreakdown();
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Financial Summary</CardTitle>
+    <Card className="glass-panel card-glow">
+      <CardHeader className="border-b border-white/10">
+        <CardTitle className="flex items-center">
+          <BarChart3 className="h-5 w-5 text-primary mr-2" />
+          Financial Summary
+        </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-5">
         <div className="mb-4">
           <div className="flex justify-between mb-1">
-            <span className="text-sm text-neutral-600">Monthly Revenue</span>
-            <span className="text-sm font-medium text-success">
+            <span className="text-sm text-muted-foreground">Monthly Revenue</span>
+            <span className="text-sm font-medium text-emerald-400">
               {formatCurrency(revenue)}
             </span>
           </div>
-          <div className="w-full bg-neutral-200 rounded-full h-2">
+          <div className="w-full bg-background/40 rounded-full h-2 border border-white/5">
             <div 
-              className="bg-success h-2 rounded-full" 
+              className="bg-emerald-500/70 h-2 rounded-full" 
               style={{ width: `${Math.min(100, (revenue / 2000000) * 100)}%` }}
             ></div>
           </div>
@@ -93,14 +97,14 @@ export default function FinancialSummary({ detailed = false }: FinancialSummaryP
         
         <div className="mb-4">
           <div className="flex justify-between mb-1">
-            <span className="text-sm text-neutral-600">Monthly Expenses</span>
-            <span className="text-sm font-medium text-danger">
+            <span className="text-sm text-muted-foreground">Monthly Expenses</span>
+            <span className="text-sm font-medium text-rose-400">
               {formatCurrency(expenses)}
             </span>
           </div>
-          <div className="w-full bg-neutral-200 rounded-full h-2">
+          <div className="w-full bg-background/40 rounded-full h-2 border border-white/5">
             <div 
-              className="bg-danger h-2 rounded-full" 
+              className="bg-rose-500/70 h-2 rounded-full" 
               style={{ width: `${Math.min(100, (expenses / 2000000) * 100)}%` }}
             ></div>
           </div>
@@ -108,12 +112,12 @@ export default function FinancialSummary({ detailed = false }: FinancialSummaryP
         
         <div className="mb-6">
           <div className="flex justify-between mb-1">
-            <span className="text-sm text-neutral-600">Profit Margin</span>
+            <span className="text-sm text-muted-foreground">Profit Margin</span>
             <span className="text-sm font-medium">{margin.toFixed(1)}%</span>
           </div>
-          <div className="w-full bg-neutral-200 rounded-full h-2">
+          <div className="w-full bg-background/40 rounded-full h-2 border border-white/5">
             <div 
-              className="bg-accent h-2 rounded-full" 
+              className="bg-primary/70 h-2 rounded-full" 
               style={{ width: `${Math.min(100, margin)}%` }}
             ></div>
           </div>
@@ -121,20 +125,20 @@ export default function FinancialSummary({ detailed = false }: FinancialSummaryP
         
         {detailed ? (
           <>
-            <div className="border-t border-neutral-200 pt-4 mt-2">
-              <h4 className="font-medium mb-3 text-sm text-neutral-700">Financial Details</h4>
+            <div className="border-t border-white/10 pt-4 mt-2">
+              <h4 className="font-medium mb-3 text-sm text-white/80">Financial Details</h4>
               <div className="space-y-3">
                 <div className="flex justify-between text-sm">
-                  <span className="text-neutral-600">Total Revenue</span>
-                  <span className="font-medium text-success">{formatCurrency(revenue)}</span>
+                  <span className="text-muted-foreground">Total Revenue</span>
+                  <span className="font-medium text-emerald-400">{formatCurrency(revenue)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-neutral-600">Total Expenses</span>
-                  <span className="font-medium text-danger">{formatCurrency(expenses)}</span>
+                  <span className="text-muted-foreground">Total Expenses</span>
+                  <span className="font-medium text-rose-400">{formatCurrency(expenses)}</span>
                 </div>
-                <div className="flex justify-between text-sm font-medium pt-2 border-t border-dashed border-neutral-200">
+                <div className="flex justify-between text-sm font-medium pt-2 border-t border-dashed border-white/10">
                   <span>Net Profit</span>
-                  <span className={profit >= 0 ? "text-success" : "text-danger"}>
+                  <span className={profit >= 0 ? "text-emerald-400" : "text-rose-400"}>
                     {formatCurrency(profit)}
                   </span>
                 </div>
@@ -143,7 +147,7 @@ export default function FinancialSummary({ detailed = false }: FinancialSummaryP
             
             <Button 
               variant="outline"
-              className="w-full mt-6"
+              className="w-full mt-6 border-white/20 text-primary hover:bg-primary/20 hover:text-white hover:border-primary/50 transition-all"
               onClick={() => window.location.href = "/finances"}
             >
               View Detailed Report
@@ -151,12 +155,12 @@ export default function FinancialSummary({ detailed = false }: FinancialSummaryP
           </>
         ) : (
           <>
-            <div className="border-t border-neutral-200 pt-4 mt-2">
-              <h4 className="font-medium mb-3 text-sm text-neutral-700">Expense Breakdown</h4>
+            <div className="border-t border-white/10 pt-4 mt-2">
+              <h4 className="font-medium mb-3 text-sm text-white/80">Expense Breakdown</h4>
               <div className="space-y-2">
                 {Object.entries(expenseBreakdown).map(([category, amount]) => (
                   <div key={category} className="flex justify-between text-sm">
-                    <span className="text-neutral-600">{category}</span>
+                    <span className="text-muted-foreground">{category}</span>
                     <span className="font-medium">{formatCurrency(amount as number)}</span>
                   </div>
                 ))}
@@ -164,10 +168,11 @@ export default function FinancialSummary({ detailed = false }: FinancialSummaryP
             </div>
             
             <Button 
-              className="w-full mt-4 border border-primary text-primary hover:bg-primary hover:text-white"
+              className="w-full mt-4 border-primary/50 text-primary hover:bg-primary/20 hover:text-white hover:border-primary/80 transition-all"
               variant="outline"
               onClick={() => window.location.href = "/finances"}
             >
+              <DollarSign className="h-4 w-4 mr-2" />
               View Detailed Report
             </Button>
           </>

@@ -55,18 +55,18 @@ export default function FlightCard({ flight, detailed = false }: FlightCardProps
     switch (flight.status) {
       case "scheduled":
         return (
-          <Badge className="bg-primary bg-opacity-10 text-primary">
+          <Badge className="bg-primary/20 text-primary-foreground border border-primary/30">
             {getTimeUntil()}
           </Badge>
         );
       case "in-progress":
-        return <Badge variant="secondary">In Progress</Badge>;
+        return <Badge className="bg-amber-500/20 text-amber-400 border border-amber-500/30">In Progress</Badge>;
       case "completed":
-        return <Badge variant="success">Completed</Badge>;
+        return <Badge className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Completed</Badge>;
       case "cancelled":
-        return <Badge variant="destructive">Cancelled</Badge>;
+        return <Badge className="bg-rose-500/20 text-rose-400 border border-rose-500/30">Cancelled</Badge>;
       default:
-        return <Badge variant="outline">{flight.status}</Badge>;
+        return <Badge variant="outline" className="border-white/20">{flight.status}</Badge>;
     }
   };
   
@@ -75,13 +75,13 @@ export default function FlightCard({ flight, detailed = false }: FlightCardProps
   }
 
   return (
-    <div className="p-4 hover:bg-neutral-50 transition-all border-b border-neutral-200">
+    <div className="p-4 hover:bg-background/40 transition-all border-b border-white/10">
       <div className="flex justify-between items-center mb-2">
         <div className="flex items-center">
-          <span className="text-neutral-800 font-mono font-medium">
+          <span className="text-foreground font-mono font-medium">
             {route.originCode} → {route.destinationCode}
           </span>
-          <span className="text-xs text-neutral-500 ml-2">
+          <span className="text-xs text-muted-foreground ml-2">
             Flight {flight.flightNumber}
           </span>
         </div>
@@ -91,46 +91,46 @@ export default function FlightCard({ flight, detailed = false }: FlightCardProps
       </div>
       
       <div className="flex justify-between items-center text-sm">
-        <div className="flex items-center text-neutral-600">
-          <Plane className="h-3 w-3 mr-1" />
+        <div className="flex items-center text-muted-foreground">
+          <Plane className="h-3 w-3 mr-1 text-primary/80" />
           <span>
             {new Date(flight.departureDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, 
             {formatTime(flight.departureTime)}
           </span>
         </div>
-        <div className="flex items-center text-neutral-600">
-          <User className="h-3 w-3 mr-1" />
+        <div className="flex items-center text-muted-foreground">
+          <User className="h-3 w-3 mr-1 text-primary/80" />
           <span>
             {flight.bookedPassengers}/{flight.maximumPassengers} booked
           </span>
         </div>
-        <div className="text-success font-medium text-sm">
+        <div className="text-emerald-400 font-medium text-sm">
           {formatCurrency(parseFloat(flight.revenue))}
         </div>
       </div>
       
       {detailed && (
-        <div className="mt-3 text-xs grid grid-cols-2 md:grid-cols-4 gap-2 pt-2 border-t border-neutral-100">
+        <div className="mt-3 text-xs grid grid-cols-2 md:grid-cols-4 gap-2 pt-2 border-t border-white/10">
           <div>
-            <div className="text-neutral-500">Aircraft</div>
+            <div className="text-muted-foreground">Aircraft</div>
             <div className="font-medium">{aircraftDetails.registration} ({aircraftDetails.model.replace('Airbus ', '')})</div>
           </div>
           <div>
-            <div className="text-neutral-500">Arrival</div>
+            <div className="text-muted-foreground">Arrival</div>
             <div className="font-medium">
               {new Date(flight.arrivalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, 
               {formatTime(flight.arrivalTime)}
             </div>
           </div>
           <div>
-            <div className="text-neutral-500">Operating Cost</div>
-            <div className="font-medium text-danger">
+            <div className="text-muted-foreground">Operating Cost</div>
+            <div className="font-medium text-rose-400">
               {formatCurrency(parseFloat(flight.operatingCost))}
             </div>
           </div>
           <div>
-            <div className="text-neutral-500">Profit</div>
-            <div className={`font-medium ${parseFloat(flight.revenue) > parseFloat(flight.operatingCost) ? 'text-success' : 'text-danger'}`}>
+            <div className="text-muted-foreground">Profit</div>
+            <div className={`font-medium ${parseFloat(flight.revenue) > parseFloat(flight.operatingCost) ? 'text-emerald-400' : 'text-rose-400'}`}>
               {formatCurrency(parseFloat(flight.revenue) - parseFloat(flight.operatingCost))}
             </div>
           </div>

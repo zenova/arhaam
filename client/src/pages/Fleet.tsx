@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Plus } from "lucide-react";
+import { Plus, Plane } from "lucide-react";
 import AircraftCard from "@/components/AircraftCard";
 import PurchaseAircraftModal from "@/components/modals/PurchaseAircraftModal";
 
@@ -25,8 +25,11 @@ export default function Fleet() {
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Fleet Management</h1>
-        <Button onClick={() => setIsPurchaseModalOpen(true)}>
+        <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-purple-300 text-transparent bg-clip-text">Fleet Management</h1>
+        <Button 
+          onClick={() => setIsPurchaseModalOpen(true)}
+          className="bg-primary hover:bg-primary/80 text-white shadow-lg transition-all hover:shadow-[0_0_15px_rgba(149,76,233,0.4)] hover:translate-y-[-2px]"
+        >
           <Plus className="h-4 w-4 mr-2" />
           Purchase Aircraft
         </Button>
@@ -68,22 +71,22 @@ export default function Fleet() {
       </Card>
 
       <Tabs defaultValue="all" className="mb-6">
-        <TabsList>
-          <TabsTrigger value="all">
+        <TabsList className="bg-background/40 backdrop-blur-sm border border-white/10">
+          <TabsTrigger value="all" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary-foreground">
             All Aircraft 
-            <Badge variant="secondary" className="ml-2">{aircraft?.length || 0}</Badge>
+            <Badge variant="secondary" className="ml-2 bg-primary/30 text-white">{aircraft?.length || 0}</Badge>
           </TabsTrigger>
-          <TabsTrigger value="active">
+          <TabsTrigger value="active" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary-foreground">
             Active 
-            <Badge variant="secondary" className="ml-2">{activeAircraft.length}</Badge>
+            <Badge variant="secondary" className="ml-2 bg-primary/30 text-white">{activeAircraft.length}</Badge>
           </TabsTrigger>
-          <TabsTrigger value="maintenance">
+          <TabsTrigger value="maintenance" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary-foreground">
             Maintenance 
-            <Badge variant="secondary" className="ml-2">{maintenanceAircraft.length}</Badge>
+            <Badge variant="secondary" className="ml-2 bg-primary/30 text-white">{maintenanceAircraft.length}</Badge>
           </TabsTrigger>
-          <TabsTrigger value="en-route">
+          <TabsTrigger value="en-route" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary-foreground">
             En Route 
-            <Badge variant="secondary" className="ml-2">{enRouteAircraft.length}</Badge>
+            <Badge variant="secondary" className="ml-2 bg-primary/30 text-white">{enRouteAircraft.length}</Badge>
           </TabsTrigger>
         </TabsList>
 
@@ -127,7 +130,7 @@ export default function Fleet() {
             </div>
           ) : (
             <div className="text-center py-10">
-              <p className="text-neutral-500">No active aircraft</p>
+              <p className="text-muted-foreground">No active aircraft</p>
             </div>
           )}
         </TabsContent>
@@ -145,7 +148,7 @@ export default function Fleet() {
             </div>
           ) : (
             <div className="text-center py-10">
-              <p className="text-neutral-500">No aircraft in maintenance</p>
+              <p className="text-muted-foreground">No aircraft in maintenance</p>
             </div>
           )}
         </TabsContent>
@@ -163,7 +166,7 @@ export default function Fleet() {
             </div>
           ) : (
             <div className="text-center py-10">
-              <p className="text-neutral-500">No aircraft en route</p>
+              <p className="text-muted-foreground">No aircraft en route</p>
             </div>
           )}
         </TabsContent>
