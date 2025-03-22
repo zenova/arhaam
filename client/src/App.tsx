@@ -14,11 +14,15 @@ import TopBar from "@/components/TopBar";
 
 function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-background text-foreground">
       <Sidebar />
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 flex flex-col h-screen">
         <TopBar />
-        {children}
+        <div className="flex-1 overflow-y-auto px-6 py-5 relative">
+          <div className="absolute top-[-150px] right-[-150px] w-96 h-96 bg-primary/5 rounded-full filter blur-3xl pointer-events-none" />
+          <div className="absolute bottom-[-100px] left-[-100px] w-72 h-72 bg-primary/10 rounded-full filter blur-3xl pointer-events-none" />
+          {children}
+        </div>
       </div>
     </div>
   );

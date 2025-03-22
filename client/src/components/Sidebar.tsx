@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { Link, useLocation } from "wouter";
+import { useLocation } from "wouter";
 import { 
   Plane, 
   LayoutDashboard, 
-  Route as RouteIcon, 
   Calendar, 
   BarChart4, 
   Settings, 
@@ -18,7 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 export default function Sidebar() {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { player, saveGame } = useGameContext();
   const [collapsed, setCollapsed] = useState(false);
   const { toast } = useToast();
@@ -80,6 +79,12 @@ export default function Sidebar() {
     }
   ];
 
+  // Navigation handler that uses setLocation from wouter
+  // This avoids the DOM nesting warnings from using Link with anchor tags
+  const handleNavigation = (path: string) => {
+    setLocation(path);
+  };
+
   return (
     <div 
       className={cn(
@@ -117,35 +122,34 @@ export default function Sidebar() {
             .filter(item => item.section === "Operations")
             .map(item => (
               <li key={item.path} className="group">
-                <Link href={item.path}>
-                  <a 
-                    className={cn(
-                      "flex items-center p-3 rounded-lg transition-all duration-200",
-                      location === item.path 
-                        ? 'bg-primary/20 text-white shadow-[0_0_10px_rgba(149,76,233,0.3)]' 
-                        : 'text-muted-foreground hover:text-white hover:bg-white/5'
-                    )}
-                  >
+                <div
+                  onClick={() => handleNavigation(item.path)}
+                  className={cn(
+                    "flex items-center p-3 rounded-lg transition-all duration-200 cursor-pointer",
+                    location === item.path 
+                      ? 'bg-primary/20 text-white shadow-[0_0_10px_rgba(149,76,233,0.3)]' 
+                      : 'text-muted-foreground hover:text-white hover:bg-white/5'
+                  )}
+                >
+                  <span className={cn(
+                    "flex-shrink-0 mr-3 transition-transform duration-200",
+                    location === item.path && "text-primary"
+                  )}>
+                    {item.icon}
+                  </span>
+                  {!collapsed && (
                     <span className={cn(
-                      "flex-shrink-0 mr-3 transition-transform duration-200",
-                      location === item.path && "text-primary"
+                      "transition-all duration-200",
+                      location === item.path ? "font-medium" : ""
                     )}>
-                      {item.icon}
+                      {item.label}
                     </span>
-                    {!collapsed && (
-                      <span className={cn(
-                        "transition-all duration-200",
-                        location === item.path ? "font-medium" : ""
-                      )}>
-                        {item.label}
-                      </span>
-                    )}
-                    
-                    {location === item.path && (
-                      <div className="absolute left-0 w-1 h-8 bg-primary rounded-r-full" />
-                    )}
-                  </a>
-                </Link>
+                  )}
+                  
+                  {location === item.path && (
+                    <div className="absolute left-0 w-1 h-8 bg-primary rounded-r-full" />
+                  )}
+                </div>
               </li>
             ))
           }
@@ -159,35 +163,34 @@ export default function Sidebar() {
             .filter(item => item.section === "System")
             .map(item => (
               <li key={item.path} className="group">
-                <Link href={item.path}>
-                  <a 
-                    className={cn(
-                      "flex items-center p-3 rounded-lg transition-all duration-200",
-                      location === item.path 
-                        ? 'bg-primary/20 text-white shadow-[0_0_10px_rgba(149,76,233,0.3)]' 
-                        : 'text-muted-foreground hover:text-white hover:bg-white/5'
-                    )}
-                  >
+                <div
+                  onClick={() => handleNavigation(item.path)}
+                  className={cn(
+                    "flex items-center p-3 rounded-lg transition-all duration-200 cursor-pointer",
+                    location === item.path 
+                      ? 'bg-primary/20 text-white shadow-[0_0_10px_rgba(149,76,233,0.3)]' 
+                      : 'text-muted-foreground hover:text-white hover:bg-white/5'
+                  )}
+                >
+                  <span className={cn(
+                    "flex-shrink-0 mr-3 transition-transform duration-200",
+                    location === item.path && "text-primary"
+                  )}>
+                    {item.icon}
+                  </span>
+                  {!collapsed && (
                     <span className={cn(
-                      "flex-shrink-0 mr-3 transition-transform duration-200",
-                      location === item.path && "text-primary"
+                      "transition-all duration-200",
+                      location === item.path ? "font-medium" : ""
                     )}>
-                      {item.icon}
+                      {item.label}
                     </span>
-                    {!collapsed && (
-                      <span className={cn(
-                        "transition-all duration-200",
-                        location === item.path ? "font-medium" : ""
-                      )}>
-                        {item.label}
-                      </span>
-                    )}
-                    
-                    {location === item.path && (
-                      <div className="absolute left-0 w-1 h-8 bg-primary rounded-r-full" />
-                    )}
-                  </a>
-                </Link>
+                  )}
+                  
+                  {location === item.path && (
+                    <div className="absolute left-0 w-1 h-8 bg-primary rounded-r-full" />
+                  )}
+                </div>
               </li>
             ))
           }
