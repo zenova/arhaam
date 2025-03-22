@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLocation } from "wouter";
+import { useLocation } from "wouter";
 import { 
   Plane, 
   LayoutDashboard, 
@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Sidebar() {
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const { player, saveGame } = useGameContext();
   const [collapsed, setCollapsed] = useState(false);
   const { toast } = useToast();
@@ -106,18 +106,18 @@ export default function Sidebar() {
             .filter(item => item.section === "Management")
             .map(item => (
               <li key={item.path}>
-                <Link href={item.path}>
-                  <a className={`flex items-center p-3 rounded-xl transition-all
-                      ${location === item.path 
-                        ? 'bg-[rgba(255,255,255,0.1)] text-[#64ffda]' 
-                        : 'text-white hover:bg-[rgba(255,255,255,0.05)]'}`}
-                  >
-                    <span className={`${collapsed ? '' : 'mr-3'}`}>
-                      {item.icon}
-                    </span>
-                    {!collapsed && <span className="font-medium">{item.label}</span>}
-                  </a>
-                </Link>
+                <button
+                  onClick={() => navigate(item.path)}
+                  className={`w-full flex items-center p-3 rounded-xl transition-all
+                    ${location === item.path 
+                      ? 'bg-[rgba(255,255,255,0.1)] text-[#64ffda]' 
+                      : 'text-white hover:bg-[rgba(255,255,255,0.05)]'}`}
+                >
+                  <span className={`${collapsed ? '' : 'mr-3'}`}>
+                    {item.icon}
+                  </span>
+                  {!collapsed && <span className="font-medium">{item.label}</span>}
+                </button>
               </li>
             ))
           }
@@ -133,18 +133,18 @@ export default function Sidebar() {
             .filter(item => item.section === "Game")
             .map(item => (
               <li key={item.path}>
-                <Link href={item.path}>
-                  <a className={`flex items-center p-3 rounded-xl transition-all
-                      ${location === item.path 
-                        ? 'bg-[rgba(255,255,255,0.1)] text-[#64ffda]' 
-                        : 'text-white hover:bg-[rgba(255,255,255,0.05)]'}`}
-                  >
-                    <span className={`${collapsed ? '' : 'mr-3'}`}>
-                      {item.icon}
-                    </span>
-                    {!collapsed && <span className="font-medium">{item.label}</span>}
-                  </a>
-                </Link>
+                <button
+                  onClick={() => navigate(item.path)}
+                  className={`w-full flex items-center p-3 rounded-xl transition-all
+                    ${location === item.path 
+                      ? 'bg-[rgba(255,255,255,0.1)] text-[#64ffda]' 
+                      : 'text-white hover:bg-[rgba(255,255,255,0.05)]'}`}
+                >
+                  <span className={`${collapsed ? '' : 'mr-3'}`}>
+                    {item.icon}
+                  </span>
+                  {!collapsed && <span className="font-medium">{item.label}</span>}
+                </button>
               </li>
             ))
           }
