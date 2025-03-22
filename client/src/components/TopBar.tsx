@@ -2,7 +2,7 @@ import { useGameContext } from "@/contexts/GameContext";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/utils/gameLogic";
-import { DollarSign, CalendarDays, FastForward, TrendingUp, TrendingDown } from "lucide-react";
+import { DollarSign, CalendarDays, FastForward } from "lucide-react";
 
 export default function TopBar() {
   const { player, advanceDay } = useGameContext();
@@ -43,43 +43,34 @@ export default function TopBar() {
   }) : '';
 
   return (
-    <div className="taskbar">
-      <div className="taskbar-left">
-        <div className="taskbar-item">
-          <CalendarDays className="text-[#64ffda]" size={18} />
-          <span className="taskbar-text">{formattedDate}</span>
-        </div>
+    <div className="bg-white p-4 flex justify-between items-center shadow-sm">
+      <div className="flex items-center">
+        <h2 className="text-lg font-semibold">Dashboard</h2>
       </div>
       
-      <div className="taskbar-center">
-        <button 
-          id="timeToggle" 
-          className="flex items-center justify-center"
-          onClick={handleAdvanceDay}
-        >
-          <FastForward size={20} />
-        </button>
-      </div>
-      
-      <div className="taskbar-right">
+      <div className="flex items-center space-x-4">
         {player && (
-          <div className="taskbar-item">
-            <DollarSign className="text-[#64ffda]" size={18} />
-            <span className="taskbar-text font-bold">
+          <div className="flex items-center text-success">
+            <DollarSign className="h-4 w-4 mr-1" />
+            <span className="font-mono font-medium">
               {formatCurrency(parseFloat(player.money))}
             </span>
-            <div className="money-trend">
-              <div className="trend-item gain">
-                <TrendingUp size={12} />
-                <span className="trend-value">+$1.2M</span>
-                <span>today</span>
-              </div>
-              <div className="trend-item loss">
-                <TrendingDown size={12} />
-                <span className="trend-value">-$250K</span>
-                <span>costs</span>
-              </div>
-            </div>
+          </div>
+        )}
+        
+        <Button 
+          size="sm" 
+          className="bg-primary text-white hover:bg-primary/90"
+          onClick={handleAdvanceDay}
+        >
+          <FastForward className="h-4 w-4 mr-1" />
+          Advance Day
+        </Button>
+        
+        {player && (
+          <div className="flex items-center bg-neutral-200 rounded-full px-3 py-1 text-sm">
+            <CalendarDays className="h-4 w-4 mr-1 text-neutral-600" />
+            <span>{formattedDate}</span>
           </div>
         )}
       </div>
