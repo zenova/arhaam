@@ -32,30 +32,33 @@ export default function Fleet() {
         </Button>
       </div>
 
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Fleet Overview</CardTitle>
+      <Card className="mb-6 glass-panel card-glow">
+        <CardHeader className="border-b border-white/10">
+          <CardTitle className="flex items-center">
+            <Plane className="h-5 w-5 text-primary mr-2" />
+            Fleet Overview
+          </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-5">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-neutral-100 p-4 rounded">
-              <div className="text-sm text-neutral-600">Total Aircraft</div>
+            <div className="bg-background/40 border border-white/5 p-4 rounded-lg shadow-sm">
+              <div className="text-sm text-muted-foreground">Total Aircraft</div>
               <div className="text-2xl font-semibold">{aircraft?.length || 0}</div>
             </div>
-            <div className="bg-neutral-100 p-4 rounded">
-              <div className="text-sm text-neutral-600">A320neo</div>
+            <div className="bg-background/40 border border-white/5 p-4 rounded-lg shadow-sm">
+              <div className="text-sm text-muted-foreground">A320neo</div>
               <div className="text-2xl font-semibold">
                 {aircraft?.filter(a => a.model === "Airbus A320neo").length || 0}
               </div>
             </div>
-            <div className="bg-neutral-100 p-4 rounded">
-              <div className="text-sm text-neutral-600">A330-300</div>
+            <div className="bg-background/40 border border-white/5 p-4 rounded-lg shadow-sm">
+              <div className="text-sm text-muted-foreground">A330-300</div>
               <div className="text-2xl font-semibold">
                 {aircraft?.filter(a => a.model === "Airbus A330-300").length || 0}
               </div>
             </div>
-            <div className="bg-neutral-100 p-4 rounded">
-              <div className="text-sm text-neutral-600">Total Capacity</div>
+            <div className="bg-background/40 border border-white/5 p-4 rounded-lg shadow-sm">
+              <div className="text-sm text-muted-foreground">Total Capacity</div>
               <div className="text-2xl font-semibold">
                 {aircraft?.reduce((sum, a) => sum + a.capacity, 0) || 0} seats
               </div>
@@ -86,7 +89,7 @@ export default function Fleet() {
 
         <TabsContent value="all" className="mt-4">
           {isLoading ? (
-            <div className="text-center py-10">Loading aircraft...</div>
+            <div className="text-center py-10 text-muted-foreground">Loading aircraft...</div>
           ) : aircraft && aircraft.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {aircraft.map(aircraft => (
@@ -99,8 +102,12 @@ export default function Fleet() {
             </div>
           ) : (
             <div className="text-center py-10">
-              <p className="text-lg text-neutral-500 mb-4">No aircraft in your fleet yet</p>
-              <Button onClick={() => setIsPurchaseModalOpen(true)}>
+              <p className="text-lg text-muted-foreground mb-4">No aircraft in your fleet yet</p>
+              <Button 
+                onClick={() => setIsPurchaseModalOpen(true)}
+                className="bg-primary hover:bg-primary/80 text-white shadow-lg transition-all hover:shadow-[0_0_15px_rgba(149,76,233,0.4)] hover:translate-y-[-2px]"
+              >
+                <Plus className="h-4 w-4 mr-2" />
                 Purchase Your First Aircraft
               </Button>
             </div>

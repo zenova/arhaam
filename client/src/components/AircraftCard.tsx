@@ -42,14 +42,14 @@ export default function AircraftCard({ aircraft, detailed = false, className = "
   };
 
   return (
-    <Card className={`border hover:border-primary transition-all ${className}`}>
+    <Card className={`bg-background/70 backdrop-blur-sm border border-white/10 hover:border-primary/50 shadow-md transition-all hover:shadow-[0_0_15px_rgba(149,76,233,0.3)] ${className}`}>
       <CardContent className="p-0">
         <div className="p-3 flex items-center justify-between">
           <div className="flex items-center">
             <Plane className="text-primary mr-3" />
             <div>
               <div className="font-medium">{aircraft.model}</div>
-              <div className="text-xs text-neutral-500 font-mono">{aircraft.registration}</div>
+              <div className="text-xs text-muted-foreground font-mono">{aircraft.registration}</div>
             </div>
           </div>
           <Badge className={getStatusColor(aircraft.status)}>
@@ -59,15 +59,15 @@ export default function AircraftCard({ aircraft, detailed = false, className = "
         
         <div className="px-3 pb-3 grid grid-cols-3 gap-2 text-xs">
           <div>
-            <div className="text-neutral-500">Range</div>
+            <div className="text-muted-foreground">Range</div>
             <div className="font-medium">{aircraft.range.toLocaleString()} km</div>
           </div>
           <div>
-            <div className="text-neutral-500">Capacity</div>
+            <div className="text-muted-foreground">Capacity</div>
             <div className="font-medium">{aircraft.capacity} seats</div>
           </div>
           <div>
-            <div className="text-neutral-500">Status</div>
+            <div className="text-muted-foreground">Status</div>
             <div className="font-medium">
               {aircraft.status === "en-route" ? "En Route" : getMaintenanceStatus()}
             </div>
@@ -75,16 +75,16 @@ export default function AircraftCard({ aircraft, detailed = false, className = "
         </div>
         
         {detailed && (
-          <div className="px-3 pb-3 border-t border-neutral-100 pt-3 text-xs">
+          <div className="px-3 pb-3 border-t border-white/10 pt-3 text-xs">
             <div className="grid grid-cols-2 gap-2 mb-2">
               <div>
-                <div className="text-neutral-500">Purchase Date</div>
+                <div className="text-muted-foreground">Purchase Date</div>
                 <div className="font-medium">
                   {new Date(aircraft.purchaseDate).toLocaleDateString()}
                 </div>
               </div>
               <div>
-                <div className="text-neutral-500">Purchase Price</div>
+                <div className="text-muted-foreground">Purchase Price</div>
                 <div className="font-medium">
                   {formatCurrency(parseFloat(aircraft.purchasePrice))}
                 </div>
@@ -93,15 +93,15 @@ export default function AircraftCard({ aircraft, detailed = false, className = "
             
             <div className="grid grid-cols-3 gap-2">
               <div>
-                <div className="text-neutral-500">Speed</div>
+                <div className="text-muted-foreground">Speed</div>
                 <div className="font-medium">{aircraft.cruisingSpeed} km/h</div>
               </div>
               <div>
-                <div className="text-neutral-500">Fuel Efficiency</div>
+                <div className="text-muted-foreground">Fuel Efficiency</div>
                 <div className="font-medium">{aircraft.fuelEfficiency} l/p/100km</div>
               </div>
               <div>
-                <div className="text-neutral-500">Maintenance</div>
+                <div className="text-muted-foreground">Maintenance</div>
                 <div className="font-medium">
                   {new Date(aircraft.maintenanceDue).toLocaleDateString()}
                 </div>
@@ -111,17 +111,17 @@ export default function AircraftCard({ aircraft, detailed = false, className = "
             {(aircraft.hasWifi || aircraft.hasEntertainment || aircraft.hasPremiumSeating) && (
               <div className="flex gap-2 mt-2">
                 {aircraft.hasWifi && (
-                  <Badge variant="outline" className="text-xs">
+                  <Badge variant="outline" className="text-xs border-primary/30 bg-primary/10">
                     Wi-Fi
                   </Badge>
                 )}
                 {aircraft.hasEntertainment && (
-                  <Badge variant="outline" className="text-xs">
+                  <Badge variant="outline" className="text-xs border-primary/30 bg-primary/10">
                     Entertainment
                   </Badge>
                 )}
                 {aircraft.hasPremiumSeating && (
-                  <Badge variant="outline" className="text-xs">
+                  <Badge variant="outline" className="text-xs border-primary/30 bg-primary/10">
                     Premium Seating
                   </Badge>
                 )}

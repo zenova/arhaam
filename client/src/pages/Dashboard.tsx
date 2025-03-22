@@ -8,7 +8,7 @@ import FlightCard from "@/components/FlightCard";
 import FinancialSummary from "@/components/FinancialSummary";
 import PurchaseAircraftModal from "@/components/modals/PurchaseAircraftModal";
 import ScheduleFlightModal from "@/components/modals/ScheduleFlightModal";
-import { Plane, Route as RouteIcon, TrendingUp } from "lucide-react";
+import { Plane, Route as RouteIcon, TrendingUp, Calendar, Plus } from "lucide-react";
 
 export default function Dashboard() {
   const { player } = useGameContext();
@@ -78,8 +78,9 @@ export default function Dashboard() {
         />
       </div>
       
-      <div className="bg-white rounded-lg shadow-sm mb-6">
-        <div className="p-4 border-b border-neutral-200">
+      <div className="glass-panel rounded-lg shadow-md mb-6 card-glow">
+        <div className="p-4 border-b border-white/10 flex items-center">
+          <RouteIcon className="h-5 w-5 text-primary mr-2" />
           <h3 className="font-semibold text-lg">Route Network</h3>
         </div>
         <div className="p-4 relative" style={{ height: "400px" }}>
@@ -88,11 +89,14 @@ export default function Dashboard() {
       </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="bg-white rounded-lg shadow-sm">
-          <div className="p-4 border-b border-neutral-200 flex justify-between items-center">
-            <h3 className="font-semibold text-lg">Fleet Overview</h3>
+        <div className="glass-panel rounded-lg shadow-md card-glow">
+          <div className="p-4 border-b border-white/10 flex justify-between items-center">
+            <div className="flex items-center">
+              <Plane className="h-5 w-5 text-primary mr-2" />
+              <h3 className="font-semibold text-lg">Fleet Overview</h3>
+            </div>
             <button 
-              className="text-primary hover:text-primary-dark text-sm font-medium"
+              className="text-primary hover:text-primary-foreground text-sm font-medium transition-colors"
               onClick={() => window.location.href = "/fleet"}
             >
               View All
@@ -104,39 +108,42 @@ export default function Dashboard() {
                 <AircraftCard key={aircraft.id} aircraft={aircraft} className="mb-3" />
               ))
             ) : (
-              <p className="text-center text-neutral-500 my-4">No aircraft in your fleet</p>
+              <p className="text-center text-muted-foreground my-4">No aircraft in your fleet</p>
             )}
             
             <button 
-              className="mt-4 bg-primary text-white w-full py-2 rounded-lg hover:bg-primary/90 transition-all"
+              className="mt-4 bg-primary text-white w-full py-2 rounded-lg hover:bg-primary/80 transition-all shadow-lg hover:shadow-[0_0_15px_rgba(149,76,233,0.4)] hover:translate-y-[-2px]"
               onClick={() => setIsPurchaseModalOpen(true)}
             >
-              <i className="fas fa-plus mr-1"></i> Purchase Aircraft
+              <Plus className="h-4 w-4 inline mr-1" /> Purchase Aircraft
             </button>
           </div>
         </div>
         
-        <div className="bg-white rounded-lg shadow-sm">
-          <div className="p-4 border-b border-neutral-200 flex justify-between items-center">
-            <h3 className="font-semibold text-lg">Upcoming Flights</h3>
+        <div className="glass-panel rounded-lg shadow-md card-glow">
+          <div className="p-4 border-b border-white/10 flex justify-between items-center">
+            <div className="flex items-center">
+              <Calendar className="h-5 w-5 text-primary mr-2" /> 
+              <h3 className="font-semibold text-lg">Upcoming Flights</h3>
+            </div>
             <button 
-              className="text-primary hover:text-primary-dark text-sm font-medium"
+              className="text-primary hover:text-primary-foreground text-sm font-medium transition-colors"
               onClick={() => setIsScheduleModalOpen(true)}
             >
               Schedule New
             </button>
           </div>
-          <div className="divide-y divide-neutral-200">
+          <div className="divide-y divide-white/5">
             {upcomingFlights && upcomingFlights.length > 0 ? (
               upcomingFlights.slice(0, 3).map((flight) => (
                 <FlightCard key={flight.id} flight={flight} />
               ))
             ) : (
-              <p className="text-center text-neutral-500 my-4">No upcoming flights</p>
+              <p className="text-center text-muted-foreground my-4">No upcoming flights</p>
             )}
             
             {upcomingFlights && upcomingFlights.length > 0 && (
-              <div className="p-4 text-center text-sm text-neutral-500">
+              <div className="p-4 text-center text-sm text-muted-foreground">
                 <button 
                   className="hover:text-primary hover:underline transition-all"
                   onClick={() => window.location.href = "/schedule"}
