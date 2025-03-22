@@ -56,7 +56,7 @@ export const TRANSACTION_TYPES = {
  * Default financial values
  */
 export const FINANCIAL_DEFAULTS = {
-  STARTING_MONEY: 10000000, // $10M
+  STARTING_MONEY: 5000000000, // $5B
   MAINTENANCE_COST_A320: 120000, // $120k per maintenance
   MAINTENANCE_COST_A330: 250000, // $250k per maintenance
   MAINTENANCE_INTERVAL_DAYS: 30, // Days between maintenance
@@ -80,18 +80,18 @@ export const DIFFICULTY_SETTINGS = {
     name: "Easy",
     demandMultiplier: 1.2,
     costMultiplier: 0.8,
-    startingMoney: 15000000
+    startingMoney: 7000000000 // $7B
   },
   NORMAL: {
     name: "Normal",
     demandMultiplier: 1.0,
     costMultiplier: 1.0,
-    startingMoney: 10000000
+    startingMoney: 5000000000 // $5B
   },
   HARD: {
     name: "Hard",
     demandMultiplier: 0.8,
     costMultiplier: 1.2,
-    startingMoney: 7500000
+    startingMoney: 3000000000 // $3B
   }
 };

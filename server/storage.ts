@@ -114,7 +114,7 @@ export class MemStorage implements IStorage {
     const newPlayer: Player = {
       ...player,
       id,
-      money: "10000000",
+      money: "5000000000", // $5 billion
       currentDate: new Date(),
       hub: "JFK",
       lastLogin: new Date()
