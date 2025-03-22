@@ -44,12 +44,15 @@ export default function Dashboard() {
 
   return (
     <div className="p-6">
+      <h1 className="text-2xl font-bold mb-6 bg-gradient-to-r from-primary to-purple-300 text-transparent bg-clip-text">
+        Airways Manager Dashboard
+      </h1>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
         <StatCard 
           title="Fleet Size" 
           value={fleetSize} 
           suffix="aircraft"
-          icon={<Plane className="text-primary" />}
+          icon={<Plane className="h-5 w-5" />}
           details={[
             { label: "A320neo", value: a320Count },
             { label: "A330-300", value: a330Count }
@@ -60,7 +63,7 @@ export default function Dashboard() {
           title="Active Routes" 
           value={routeCount} 
           suffix="routes"
-          icon={<RouteIcon className="text-accent" />}
+          icon={<RouteIcon className="h-5 w-5" />}
           details={[
             { label: "Total Distance", value: `${(totalDistance).toLocaleString()} km` }
           ]}
@@ -69,7 +72,7 @@ export default function Dashboard() {
         <StatCard 
           title="Weekly Revenue" 
           value={`$${weeklyRevenue.toLocaleString()}`}
-          icon={<TrendingUp className="text-success" />}
+          icon={<TrendingUp className="h-5 w-5" />}
           trend={{ 
             value: 8.5, 
             label: "from last week", 
